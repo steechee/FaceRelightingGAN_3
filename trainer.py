@@ -145,24 +145,31 @@ class Trainer(object):
                     "g_loss": self.g_loss,
                     "d_loss": self.d_loss,
                     "k_t": self.k_t,
+                    "d_loss_real": self.d_loss_real,
+                    "d_loss_fake": self.d_loss_fake,
+                    "balance": self.balance,
                 })
             result = self.sess.run(fetch_dict)
 
             measure = result['measure']
             measure_history.append(measure)
 
-            if step % self.log_step == 0:
+            if step % self.log_step == 0: # every 50 steps
                 self.summary_writer.add_summary(result['summary'], step)
                 self.summary_writer.flush()
 
                 g_loss = result['g_loss']
                 d_loss = result['d_loss']
                 k_t = result['k_t']
+                d_loss_real = result['d_loss_real']
+                d_loss_fake = result['d_loss_fake']
+                balance = result['balance']
 
-                print("[{}/{}] Loss_D: {:.6f} Loss_G: {:.6f} measure: {:.4f}, k_t: {:.4f}". \
-                      format(step, self.max_step, d_loss, g_loss, measure, k_t))
+                print("[{}/{}] Loss_D: {:.6f} Loss_G: {:.6f} measure: {:.4f}, k_t: {:.4f}, d_loss_real: {:.4f}, d_loss_fake: {:.4f}, balance: {:.4f}". \
+                      format(step, self.max_step, d_loss, g_loss, measure, k_t, d_loss_real, d_loss_fake, balance))
 
-            if step % (self.log_step * 10) == 0:
+            if step % (self.log_step * 10) == 0: # every 500 steps
+            # if step % (self.log_step) == 0: #
                 # x_fake = self.generate(z_fixed, self.model_dir, idx=step)
                 self.generate(x_fixed[0], self.model_dir, idx=step)
                 # print (x_fake.shape) # 16 64 64 3
@@ -205,7 +212,7 @@ class Trainer(object):
                 (tf.shape(x)[0], self.z_num), minval=-1.0, maxval=1.0)
         self.k_t = tf.Variable(0., trainable=False, name='k_t')
 
-        G, self.G_var = GeneratorCNN(
+        G, mask, self.G_var = GeneratorCNN(
                 self.x, self.channel, self.z_num, self.repeat_num,
                 self.conv_hidden_num, self.data_format, reuse=False)
 
@@ -227,6 +234,8 @@ class Trainer(object):
         # print (AE_x.get_shape) # 16 3 64 64
 
         self.G = denorm_img(G, self.data_format)
+        self.mask = denorm_img(mask, self.data_format)
+
         self.AE_G, self.AE_x = denorm_img(AE_G, self.data_format), denorm_img(AE_x, self.data_format)
         # print (self.AE_x.get_shape) # 16 64 64 3
 
@@ -243,13 +252,13 @@ class Trainer(object):
         self.d_loss = self.d_loss_real - self.k_t * self.d_loss_fake
         # self.g_loss = tf.reduce_mean(tf.abs(AE_G - G))
         # self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + tf.reduce_mean(tf.abs(G - x))
-        # self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + tf.reduce_mean(tf.abs(G - normalgt))
-        self.g_loss = tf.reduce_mean(tf.abs(G - normalgt))
+        self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + tf.reduce_mean(tf.abs(G - normalgt)) + tf.reduce_mean(tf.abs(mask - maskgt))
+        # self.g_loss = tf.reduce_mean(tf.abs(G - normalgt))
 
         d_optim = d_optimizer.minimize(self.d_loss, var_list=self.D_var)
         g_optim = g_optimizer.minimize(self.g_loss, global_step=self.step, var_list=self.G_var)
 
-        self.balance = self.gamma * self.d_loss_real - self.g_loss
+        self.balance = self.gamma * self.d_loss_real - self.g_loss # gamma = 0.5
         self.measure = self.d_loss_real + tf.abs(self.balance)
 
         with tf.control_dependencies([d_optim, g_optim]):
@@ -297,6 +306,13 @@ class Trainer(object):
         x_path = os.path.join(path, '{}_G.png'.format(idx))
         save_image(x, x_path)
         print("[*] Samples saved: {}".format(x_path))
+
+        mask = self.sess.run(self.mask, {self.x: inputs})
+        mask_path = os.path.join(path, '{}_M.png'.format(idx))
+        save_image(mask, mask_path)
+        print("[*] Samples saved: {}".format(mask_path))
+
+
 
     # def autoencode(self, inputs, path, idx=None, x_fake=None):
     def autoencode(self, inputs, path, idx=None):
