@@ -14,6 +14,9 @@ from collections import deque
 
 from models import *
 from utils import save_image
+from utils import templight
+from utils import getmatrix
+from utils import getshading
 
 def next(loader):
     return loader.next()[0].data.numpy()
@@ -82,7 +85,7 @@ class Trainer(object):
         self.data_format = config.data_format
 
         _, height, width, self.channel = \
-                get_conv_shape(self.data_loader, self.data_format)
+                get_conv_shape(self.data_loader[0], self.data_format)
         self.repeat_num = int(np.log2(height)) - 2
 
         self.start_step = 0
@@ -123,7 +126,10 @@ class Trainer(object):
         z_fixed = np.random.uniform(-1, 1, size=(self.batch_size, self.z_num))
 
         x_fixed = self.get_image_from_loader()
-        save_image(x_fixed, '{}/x_fixed.png'.format(self.model_dir))
+        # print (x_fixed[0].shape)
+        save_image(x_fixed[0], '{}/x_fixed_rgb.png'.format(self.model_dir))
+        save_image(x_fixed[1], '{}/x_fixed_normal.png'.format(self.model_dir))
+        save_image(x_fixed[2], '{}/x_fixed_mask.png'.format(self.model_dir))
 
         prev_measure = 1
         measure_history = deque([0]*self.lr_update_step, self.lr_update_step)
@@ -157,8 +163,18 @@ class Trainer(object):
                       format(step, self.max_step, d_loss, g_loss, measure, k_t))
 
             if step % (self.log_step * 10) == 0:
-                x_fake = self.generate(z_fixed, self.model_dir, idx=step)
-                self.autoencode(x_fixed, self.model_dir, idx=step, x_fake=x_fake)
+                # x_fake = self.generate(z_fixed, self.model_dir, idx=step)
+                self.generate(x_fixed[0], self.model_dir, idx=step)
+                # print (x_fake.shape) # 16 64 64 3
+                # print (x_fixed[0].shape) # 16 64 64 3
+
+                self.autoencode(x_fixed[0], self.model_dir, idx=step)
+
+                # self.autoencode(x_fixed[0], self.model_dir, idx=step, x_fake=x_fake)
+                # testnormalresult = self.sess.run(self.normal)
+                # print (testnormalresult.shape)
+                # testnormalresult = denorm_img(testnormalresult, self.data_format)
+                # save_image(testnormalresult,'testnormal.png')
 
             if step % self.lr_update_step == self.lr_update_step - 1:
                 self.sess.run([self.g_lr_update, self.d_lr_update])
@@ -167,24 +183,52 @@ class Trainer(object):
                 #prev_measure = cur_measure
 
     def build_model(self):
-        self.x = self.data_loader
+        self.x = self.data_loader[0] #rgb
+        # print (self.x.get_shape) 16 3 64 64
+
+        self.normalgt = self.data_loader[1]
+        self.maskgt = self.data_loader[2]
+        # self.lightgt = templight(self)
+        # # print (self.lightgt.shape) # 9 3
+        # self.shadinggt = getshading(self.normalgt, self.lightgt)
+        # # print (self.shadinggt.get_shape())
+        # self.shadinggt = tf.transpose(self.shadinggt,[0, 3, 1, 2])
+        # # print (self.shadinggt.get_shape())
+        # self.albedogt = self.x / (self.shadinggt + 1e-6)
+        # print (self.albedogt.get_shape())
+
         x = norm_img(self.x)
+        normalgt = norm_img(self.normalgt)
+        maskgt = norm_img(self.maskgt)
 
         self.z = tf.random_uniform(
                 (tf.shape(x)[0], self.z_num), minval=-1.0, maxval=1.0)
         self.k_t = tf.Variable(0., trainable=False, name='k_t')
 
         G, self.G_var = GeneratorCNN(
-                self.z, self.conv_hidden_num, self.channel,
-                self.repeat_num, self.data_format, reuse=False)
+                self.x, self.channel, self.z_num, self.repeat_num,
+                self.conv_hidden_num, self.data_format, reuse=False)
+
+        # Z, z_n, self.Enc_var = Encoder(
+        #         self.x, self.channel, self.z_num,
+        #         self.repeat_num, self.conv_hidden_num, self.data_format)
+        #
+        # G, self.Dec_var = Decoder(
+        #         Z, self.conv_hidden_num, self.channel,
+        #         self.repeat_num, self.data_format, self.x, self.maskgt)
+                # self.repeat_num, self.data_format, self.x, self.maskgt, self.albedogt, self.lightgt)
+
+        # self.G_var = self.Enc_var + self.Dec_var
 
         d_out, self.D_z, self.D_var = DiscriminatorCNN(
                 tf.concat([G, x], 0), self.channel, self.z_num, self.repeat_num,
                 self.conv_hidden_num, self.data_format)
         AE_G, AE_x = tf.split(d_out, 2)
+        # print (AE_x.get_shape) # 16 3 64 64
 
         self.G = denorm_img(G, self.data_format)
         self.AE_G, self.AE_x = denorm_img(AE_G, self.data_format), denorm_img(AE_x, self.data_format)
+        # print (self.AE_x.get_shape) # 16 64 64 3
 
         if self.optimizer == 'adam':
             optimizer = tf.train.AdamOptimizer
@@ -197,7 +241,10 @@ class Trainer(object):
         self.d_loss_fake = tf.reduce_mean(tf.abs(AE_G - G))
 
         self.d_loss = self.d_loss_real - self.k_t * self.d_loss_fake
-        self.g_loss = tf.reduce_mean(tf.abs(AE_G - G))
+        # self.g_loss = tf.reduce_mean(tf.abs(AE_G - G))
+        # self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + tf.reduce_mean(tf.abs(G - x))
+        # self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + tf.reduce_mean(tf.abs(G - normalgt))
+        self.g_loss = tf.reduce_mean(tf.abs(G - normalgt))
 
         d_optim = d_optimizer.minimize(self.d_loss, var_list=self.D_var)
         g_optim = g_optimizer.minimize(self.g_loss, global_step=self.step, var_list=self.G_var)
@@ -243,29 +290,41 @@ class Trainer(object):
         test_variables = tf.contrib.framework.get_variables(vs)
         self.sess.run(tf.variables_initializer(test_variables))
 
-    def generate(self, inputs, root_path=None, path=None, idx=None, save=True):
-        x = self.sess.run(self.G, {self.z: inputs})
-        if path is None and save:
-            path = os.path.join(root_path, '{}_G.png'.format(idx))
-            save_image(x, path)
-            print("[*] Samples saved: {}".format(path))
-        return x
+    def generate(self, inputs, path, idx=None):
+        inputs = inputs.transpose([0, 3, 1, 2])
 
-    def autoencode(self, inputs, path, idx=None, x_fake=None):
-        items = {
-            'real': inputs,
-            'fake': x_fake,
-        }
-        for key, img in items.items():
-            if img is None:
-                continue
-            if img.shape[3] in [1, 3]:
-                img = img.transpose([0, 3, 1, 2])
+        x = self.sess.run(self.G, {self.x: inputs})
+        x_path = os.path.join(path, '{}_G.png'.format(idx))
+        save_image(x, x_path)
+        print("[*] Samples saved: {}".format(x_path))
 
-            x_path = os.path.join(path, '{}_D_{}.png'.format(idx, key))
-            x = self.sess.run(self.AE_x, {self.x: img})
+    # def autoencode(self, inputs, path, idx=None, x_fake=None):
+    def autoencode(self, inputs, path, idx=None):
+        # items = {
+        #     'real': inputs,
+        #     'fake': x_fake,
+        # }
+        # for key, img in items.items():
+            # if img is None:
+            #     continue
+            # if img.shape[3] in [1, 3]:
+                # print (img.shape) #16 64 64 3
+                # img = img.transpose([0, 3, 1, 2])
+                # print (img.shape) # 16 3 64 64
+                # print (key)
+                # print (img.shape)
+                # continue
+
+            inputs = inputs.transpose([0, 3, 1, 2])
+
+            # x_path = os.path.join(path, '{}_D_{}.png'.format(idx, key))
+            x_path = os.path.join(path, '{}_D.png'.format(idx))
+            # print (x_path)
+            x = self.sess.run(self.AE_x, {self.x: inputs})
+            # print (x.shape) # fail
             save_image(x, x_path)
             print("[*] Samples saved: {}".format(x_path))
+
 
     def encode(self, inputs):
         if inputs.shape[3] in [1, 3]:
@@ -350,5 +409,6 @@ class Trainer(object):
     def get_image_from_loader(self):
         x = self.data_loader.eval(session=self.sess)
         if self.data_format == 'NCHW':
-            x = x.transpose([0, 2, 3, 1])
+            # x = x.transpose([0, 2, 3, 1])
+            x = x.transpose([0, 1, 3, 4, 2])
         return x

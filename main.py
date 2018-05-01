@@ -12,14 +12,14 @@ def main(config):
     rng = np.random.RandomState(config.random_seed)
     tf.set_random_seed(config.random_seed)
 
-    if config.is_train:
+    if config.is_train: #default
         data_path = config.data_path
         batch_size = config.batch_size
         do_shuffle = True
     else:
         setattr(config, 'batch_size', 64)
         if config.test_data_path is None:
-            data_path = config.data_path
+            data_path = config.data_path # data_dir + datase = data/celeba/
         else:
             data_path = config.test_data_path
         batch_size = config.sample_per_image
