@@ -89,6 +89,6 @@ def get_loader(root, batch_size, scale_size, data_format, split=None, is_graysca
         pass
     else:
         raise Exception("[!] Unkown data_format: {}".format(data_format))
-
+    print (rgbqueue.get_shape())
     # return tf.to_float(rgbqueue), tf.to_float(normalqueue), tf.to_float(maskqueue), tf.to_float(lightqueue)
     return tf.to_float(rgbqueue), tf.to_float(normalqueue), tf.to_float(maskqueue)

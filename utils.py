@@ -202,33 +202,33 @@ def getshading(normal, light):
     return shading
 
 
-def strtoarray(queue, batch_size):
-    # input : 16 1
-    # output : 16 27 or 16 9 3 or 16 3 9
-
-    for idx in range(batch_size): # 16
-        splitcomma = queue[idx][0].split(',')
-        for i in range(len(splitcomma)): #27
-            if i == 0:
-                element = float(splitcomma[i].split('[')[-1])
-                array = np.array([element])
-            elif i > 0 and i != len(splitcomma)-1:
-                element = np.array([float(splitcomma[i])])
-                array = np.concatenate((array,element),axis=-1)
-            else:
-                element = np.array([float(splitcomma[i].split(']')[0])])
-                array = np.concatenate((array,element),axis=-1)
-        # print (array.shape) # (27,)
-        array = np.reshape(array,[len(splitcomma),1])
-        # print (array.shape) # (27,1)
-
-        if idx == 0:
-            out = array
-        else:
-            out = np.concatenate([out,array],axis=1)
-
-    # print (out.shape) # 27,16
-    out = np.transpose(out,[1,0])
-    # print (out.shape) # 16 27
-
-    return out
+# def strtoarray(queue, batch_size):
+#     # input : 16 1
+#     # output : 16 27 or 16 9 3 or 16 3 9
+#
+#     for idx in range(batch_size): # 16
+#         splitcomma = queue[idx][0].split(',')
+#         for i in range(len(splitcomma)): #27
+#             if i == 0:
+#                 element = float(splitcomma[i].split('[')[-1])
+#                 array = np.array([element])
+#             elif i > 0 and i != len(splitcomma)-1:
+#                 element = np.array([float(splitcomma[i])])
+#                 array = np.concatenate((array,element),axis=-1)
+#             else:
+#                 element = np.array([float(splitcomma[i].split(']')[0])])
+#                 array = np.concatenate((array,element),axis=-1)
+#         # print (array.shape) # (27,)
+#         array = np.reshape(array,[len(splitcomma),1])
+#         # print (array.shape) # (27,1)
+#
+#         if idx == 0:
+#             out = array
+#         else:
+#             out = np.concatenate([out,array],axis=1)
+#
+#     # print (out.shape) # 27,16
+#     out = np.transpose(out,[1,0])
+#     # print (out.shape) # 16 27
+#
+#     return out

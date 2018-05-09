@@ -17,7 +17,6 @@ from utils import save_image
 from utils import templight
 from utils import getmatrix
 from utils import getshading
-from utils import strtoarray
 
 def next(loader):
     return loader.next()[0].data.numpy()
@@ -130,13 +129,13 @@ class Trainer(object):
     def train(self):
         z_fixed = np.random.uniform(-1, 1, size=(self.batch_size, self.z_num))
 
-        x_fixed = self.get_image_from_loader()
+        x_fixed = self.get_image_from_loader() # 16 64 64 3
         normal_fixed = self.get_normal_from_loader()
         mask_fixed = self.get_mask_from_loader()
         light_fixed = self.get_light_from_loader()
 
-        print (light_fixed)
-        print (light_fixed[0])
+        # print (light_fixed)
+        # print (light_fixed[0])
 
         save_image(x_fixed, '{}/x_fixed_rgb.png'.format(self.model_dir))
         save_image(normal_fixed, '{}/x_fixed_normal.png'.format(self.model_dir))
@@ -202,12 +201,14 @@ class Trainer(object):
 
     def build_model(self):
         self.x = self.data_loader #rgb
-        # print (self.x.get_shape) 16 3 64 64
+        # print (self.x.get_shape()) #16 3 64 64
 
         self.normalgt = self.normal_loader
         self.maskgt = self.mask_loader
         self.lightgt = self.light_loader
+        # print (self.normalgt.get_shape()) #16 3 64 64
 
+        print (self.lightgt.get_shape()) #16 27
 
         # self.lightgt = templight(self)
         # # print (self.lightgt.shape) # 9 3
@@ -314,8 +315,9 @@ class Trainer(object):
         self.sess.run(tf.variables_initializer(test_variables))
 
     def generate(self, inputs, path, idx=None):
+        # print (inputs.shape)
         inputs = inputs.transpose([0, 3, 1, 2])
-
+        # print (inputs.shape)
         x = self.sess.run(self.G, {self.x: inputs})
         x_path = os.path.join(path, '{}_G.png'.format(idx))
         save_image(x, x_path)
@@ -439,7 +441,7 @@ class Trainer(object):
     def get_image_from_loader(self):
         x = self.data_loader.eval(session=self.sess)
         if self.data_format == 'NCHW':
-            x = x.transpose([0, 2, 3, 1])
+            x = x.transpose([0, 2, 3, 1]) # for image saving 16 3 64 64 to 16 64 64 3
             # x = x.transpose([0, 1, 3, 4, 2])
         return x
 
@@ -459,6 +461,11 @@ class Trainer(object):
 
     def get_light_from_loader(self):
         x = self.light_loader.eval(session=self.sess)
-        # print (x.shape) # 16 1
-        x = strtoarray(x,self.batch_size)
+
+        # print (x)
+        # print (x[3])
+        # # print (x[0].dtype)
+        # # print (x.get_shape()) # 16 1
+        # print (x.shape) # 16 27
+        # x = strtoarray(x,self.batch_size)
         return x
