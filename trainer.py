@@ -17,6 +17,7 @@ from utils import save_image
 from utils import templight
 from utils import getmatrix
 from utils import getshading
+from utils import strtoarray
 
 def next(loader):
     return loader.next()[0].data.numpy()
@@ -53,9 +54,13 @@ def slerp(val, low, high):
     return np.sin((1.0-val)*omega) / so * low + np.sin(val*omega) / so * high
 
 class Trainer(object):
-    def __init__(self, config, data_loader):
+    def __init__(self, config, rgb_loader, normal_loader, mask_loader, light_loader):
+    # def __init__(self, config, rgb_loader, normal_loader, mask_loader):
         self.config = config
-        self.data_loader = data_loader
+        self.data_loader = rgb_loader
+        self.normal_loader = normal_loader
+        self.mask_loader = mask_loader
+        self.light_loader = light_loader
         self.dataset = config.dataset
 
         self.beta1 = config.beta1
@@ -85,7 +90,7 @@ class Trainer(object):
         self.data_format = config.data_format
 
         _, height, width, self.channel = \
-                get_conv_shape(self.data_loader[0], self.data_format)
+                get_conv_shape(self.data_loader, self.data_format)
         self.repeat_num = int(np.log2(height)) - 2
 
         self.start_step = 0
@@ -126,10 +131,16 @@ class Trainer(object):
         z_fixed = np.random.uniform(-1, 1, size=(self.batch_size, self.z_num))
 
         x_fixed = self.get_image_from_loader()
-        # print (x_fixed[0].shape)
-        save_image(x_fixed[0], '{}/x_fixed_rgb.png'.format(self.model_dir))
-        save_image(x_fixed[1], '{}/x_fixed_normal.png'.format(self.model_dir))
-        save_image(x_fixed[2], '{}/x_fixed_mask.png'.format(self.model_dir))
+        normal_fixed = self.get_normal_from_loader()
+        mask_fixed = self.get_mask_from_loader()
+        light_fixed = self.get_light_from_loader()
+
+        print (light_fixed)
+        print (light_fixed[0])
+
+        save_image(x_fixed, '{}/x_fixed_rgb.png'.format(self.model_dir))
+        save_image(normal_fixed, '{}/x_fixed_normal.png'.format(self.model_dir))
+        save_image(mask_fixed, '{}/x_fixed_mask.png'.format(self.model_dir))
 
         prev_measure = 1
         measure_history = deque([0]*self.lr_update_step, self.lr_update_step)
@@ -171,11 +182,11 @@ class Trainer(object):
             if step % (self.log_step * 10) == 0: # every 500 steps
             # if step % (self.log_step) == 0: #
                 # x_fake = self.generate(z_fixed, self.model_dir, idx=step)
-                self.generate(x_fixed[0], self.model_dir, idx=step)
+                self.generate(x_fixed, self.model_dir, idx=step)
                 # print (x_fake.shape) # 16 64 64 3
                 # print (x_fixed[0].shape) # 16 64 64 3
 
-                self.autoencode(x_fixed[0], self.model_dir, idx=step)
+                self.autoencode(x_fixed, self.model_dir, idx=step)
 
                 # self.autoencode(x_fixed[0], self.model_dir, idx=step, x_fake=x_fake)
                 # testnormalresult = self.sess.run(self.normal)
@@ -190,11 +201,14 @@ class Trainer(object):
                 #prev_measure = cur_measure
 
     def build_model(self):
-        self.x = self.data_loader[0] #rgb
+        self.x = self.data_loader #rgb
         # print (self.x.get_shape) 16 3 64 64
 
-        self.normalgt = self.data_loader[1]
-        self.maskgt = self.data_loader[2]
+        self.normalgt = self.normal_loader
+        self.maskgt = self.mask_loader
+        self.lightgt = self.light_loader
+
+
         # self.lightgt = templight(self)
         # # print (self.lightgt.shape) # 9 3
         # self.shadinggt = getshading(self.normalgt, self.lightgt)
@@ -425,6 +439,26 @@ class Trainer(object):
     def get_image_from_loader(self):
         x = self.data_loader.eval(session=self.sess)
         if self.data_format == 'NCHW':
-            # x = x.transpose([0, 2, 3, 1])
-            x = x.transpose([0, 1, 3, 4, 2])
+            x = x.transpose([0, 2, 3, 1])
+            # x = x.transpose([0, 1, 3, 4, 2])
+        return x
+
+    def get_normal_from_loader(self):
+        x = self.normal_loader.eval(session=self.sess)
+        if self.data_format == 'NCHW':
+            x = x.transpose([0, 2, 3, 1])
+            # x = x.transpose([0, 1, 3, 4, 2])
+        return x
+
+    def get_mask_from_loader(self):
+        x = self.mask_loader.eval(session=self.sess)
+        if self.data_format == 'NCHW':
+            x = x.transpose([0, 2, 3, 1])
+            # x = x.transpose([0, 1, 3, 4, 2])
+        return x
+
+    def get_light_from_loader(self):
+        x = self.light_loader.eval(session=self.sess)
+        # print (x.shape) # 16 1
+        x = strtoarray(x,self.batch_size)
         return x

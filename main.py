@@ -4,6 +4,7 @@ import tensorflow as tf
 from trainer import Trainer
 from config import get_config
 from data_loader import get_loader
+from light_loader import get_light_loader
 from utils import prepare_dirs_and_logger, save_config
 
 def main(config):
@@ -25,10 +26,15 @@ def main(config):
         batch_size = config.sample_per_image
         do_shuffle = False
 
-    data_loader = get_loader(
+    # rgb_loader, normal_loader, mask_loader, light_loader = get_loader(
+    rgb_loader, normal_loader, mask_loader = get_loader(
             data_path, config.batch_size, config.input_scale_size,
             config.data_format, config.split)
-    trainer = Trainer(config, data_loader)
+    light_loader = get_light_loader(
+            data_path, config.batch_size, config.input_scale_size,
+            config.data_format, config.split)
+    trainer = Trainer(config, rgb_loader, normal_loader, mask_loader, light_loader)
+    # trainer = Trainer(config, rgb_loader, normal_loader, mask_loader)
 
     if config.is_train:
         save_config(config)

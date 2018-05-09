@@ -7,7 +7,7 @@ import numpy as np
 def get_loader(root, batch_size, scale_size, data_format, split=None, is_grayscale=False, seed=None):
     dataset_name = os.path.basename(root) # data/celeba
     if dataset_name in ['CelebA'] and split:
-        root = os.path.join(root, 'splits', split) # default is train, therefore data/celeba/train
+        root = os.path.join(root, 'splits', split) # default is train, therefore data/celeba/splits/train
 
     for ext in ["jpg", "png"]:
         rgbpaths = sorted(glob("{}/rgb/*.{}".format(root, ext))) # png
@@ -22,9 +22,12 @@ def get_loader(root, batch_size, scale_size, data_format, split=None, is_graysca
         if len(rgbpaths) != 0:
             break
 
-    for ext in ["npy"]:
-        lightpaths = sorted(glob("{}/light/*.{}".format(root, ext))) # png
 
+    # for ext in ["csv"]:
+    #     lightpaths = sorted(glob("{}/light/*.{}".format(root, ext))) # csv
+    #
+    #     if len(lightpaths) != 0:
+    #         break
 
     with Image.open(rgbpaths[0]) as img:
         w, h = img.size
@@ -42,22 +45,17 @@ def get_loader(root, batch_size, scale_size, data_format, split=None, is_graysca
     normal = tf_decode(Ndata, channels=3)
 
     Mfilename_queue = tf.train.string_input_producer(list(maskpaths), shuffle=False, seed=seed)
-    # print (Mfilename_queue.size)
     Mfilename, Mdata = reader.read(Mfilename_queue)
-    # print (Mdata.get_shape())
     mask = tf_decode(Mdata, channels=3)
 
-    # # print (len(lightpaths))
     # Lfilename_queue = tf.train.string_input_producer(list(lightpaths), shuffle=False, seed=seed)
-    # # reader.read(Lfilename_queue)
-    # Lfilename, Ldata = reader.read(Lfilename_queue)
-    # # Ldata = np.load(Lfilename_queue)
-    # # print (Ldata.get_shape())
-    # light = tf.cast(Ldata,dtype=tf.uint8)
-    # # light = np.load(list(lightpaths))
+    # Lreader = tf.TextLineReader()
+    # Lfilename, Ldata = Lreader.read(Lfilename_queue)
+    # light = tf.decode_csv(Ldata, record_defaults = [
+    # [0.], [0.], [0.], [0.], [0.], [0.], [0.], [0.], [0.],
+    # [0.], [0.], [0.], [0.], [0.], [0.], [0.], [0.], [0.],
+    # [0.], [0.], [0.], [0.], [0.], [0.], [0.], [0.], [0.]])
 
-    # print lightpaths
-    # print len(lightpaths) 40000
 
     if is_grayscale:
         pass
@@ -67,51 +65,30 @@ def get_loader(root, batch_size, scale_size, data_format, split=None, is_graysca
     normal.set_shape(shape)
     mask.set_shape(shape)
 
-    # print mask.shape # 64 64 3
-    # print light.get_shape()
-    # light.set_shape([9, 3])
-
     min_after_dequeue = 5000
     capacity = min_after_dequeue + 3 * batch_size # 5000+3*16?
 
-    queue = tf.train.shuffle_batch(
-        # [image, normal, mask, light], batch_size=batch_size,
+    rgbqueue, normalqueue, maskqueue = tf.train.batch(
+    # rgbqueue, normalqueue, maskqueue, lightqueue = tf.train.batch(
         [image, normal, mask], batch_size=batch_size,
-        num_threads=4, capacity=capacity,
-        min_after_dequeue=min_after_dequeue, name='synthetic_inputs')
+        # [image, normal, mask, light], batch_size=batch_size,
+        num_threads=1, capacity=capacity, name='synthetic_inputs')
         # 3 16 3 64 64
+    # print rgbqueue.get_shape() # 16 64 64 3
+    # print normalqueue.get_shape()
+    # print maskqueue.get_shape()
 
-    # queue2 = tf.train.shuffle_batch(
-    #     # [image, normal, mask, light], batch_size=batch_size,
-    #     [light], batch_size=batch_size,
-    #     num_threads=4, capacity=capacity,
-    #     min_after_dequeue=min_after_dequeue, name='synthetic_lights')
-        # 1 16 3 9
-    # print
-    # print queue2.shape # 16
-    # queue = tf.train.shuffle_batch(
-    #     [image], batch_size=batch_size,
-    #     num_threads=4, capacity=capacity,
-    #     min_after_dequeue=min_after_dequeue, name='synthetic_inputs')
 
-    # if dataset_name in ['CelebA']:
-    #     # queue = tf.image.crop_to_bounding_box(queue, 50, 25, 128, 128)
-    #     # queue = tf.image.resize_nearest_neighbor(queue, [scale_size, scale_size])
-    # else:
-    #     queue = tf.image.resize_nearest_neighbor(queue, [scale_size, scale_size])
-    #
     if data_format == 'NCHW':
         # queue = tf.transpose(queue, [0, 3, 1, 2])
-        queue = tf.transpose(queue, [0, 1, 4, 2, 3])
-        # print (queue2.get_shape())
-        # queue2 = tf.transpose(queue2, [0, 1, 3, 2])
+        rgbqueue = tf.transpose(rgbqueue, [0, 3, 1, 2])
+        normalqueue = tf.transpose(normalqueue, [0, 3, 1, 2])
+        maskqueue = tf.transpose(maskqueue, [0, 3, 1, 2])
 
     elif data_format == 'NHWC':
         pass
     else:
         raise Exception("[!] Unkown data_format: {}".format(data_format))
 
-    # print queue
-    # return [tf.to_float(queue), tf.to_float(normal), tf.to_float(mask), tf.to_float(light)]
-    # return tf.to_float(queue), tf.to_float(queue2)
-    return tf.to_float(queue)
+    # return tf.to_float(rgbqueue), tf.to_float(normalqueue), tf.to_float(maskqueue), tf.to_float(lightqueue)
+    return tf.to_float(rgbqueue), tf.to_float(normalqueue), tf.to_float(maskqueue)
