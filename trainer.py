@@ -17,6 +17,7 @@ from utils import save_image
 from utils import templight
 from utils import getmatrix
 from utils import getshading
+from utils import getshadingnp
 
 def next(loader):
     return loader.next()[0].data.numpy()
@@ -134,12 +135,14 @@ class Trainer(object):
         mask_fixed = self.get_mask_from_loader()
         light_fixed = self.get_light_from_loader()
 
-        # print (light_fixed)
-        # print (light_fixed[0])
+        shading_fixed = np.transpose(getshadingnp(np.transpose(normal_fixed,[0, 3, 1, 2]), light_fixed),[0, 2, 3, 1])
+        albedo_fixed = np.clip(x_fixed/(shading_fixed + 1e-3), 0, 10)
 
         save_image(x_fixed, '{}/x_fixed_rgb.png'.format(self.model_dir))
         save_image(normal_fixed, '{}/x_fixed_normal.png'.format(self.model_dir))
         save_image(mask_fixed, '{}/x_fixed_mask.png'.format(self.model_dir))
+        save_image(shading_fixed, '{}/x_fixed_shading.png'.format(self.model_dir))
+        save_image(albedo_fixed, '{}/x_fixed_albedo.png'.format(self.model_dir))
 
         prev_measure = 1
         measure_history = deque([0]*self.lr_update_step, self.lr_update_step)
@@ -178,20 +181,12 @@ class Trainer(object):
                 print("[{}/{}] Loss_D: {:.6f} Loss_G: {:.6f} measure: {:.4f}, k_t: {:.4f}, d_loss_real: {:.4f}, d_loss_fake: {:.4f}, balance: {:.4f}". \
                       format(step, self.max_step, d_loss, g_loss, measure, k_t, d_loss_real, d_loss_fake, balance))
 
-            if step % (self.log_step * 10) == 0: # every 500 steps
-            # if step % (self.log_step) == 0: #
+            # if step % (self.log_step * 10) == 0: # every 500 steps
+            if step % (self.log_step) == 0: #
                 # x_fake = self.generate(z_fixed, self.model_dir, idx=step)
                 self.generate(x_fixed, self.model_dir, idx=step)
-                # print (x_fake.shape) # 16 64 64 3
-                # print (x_fixed[0].shape) # 16 64 64 3
-
                 self.autoencode(x_fixed, self.model_dir, idx=step)
-
-                # self.autoencode(x_fixed[0], self.model_dir, idx=step, x_fake=x_fake)
-                # testnormalresult = self.sess.run(self.normal)
-                # print (testnormalresult.shape)
-                # testnormalresult = denorm_img(testnormalresult, self.data_format)
-                # save_image(testnormalresult,'testnormal.png')
+                self.recontest(x_fixed, self.model_dir, idx=step)
 
             if step % self.lr_update_step == self.lr_update_step - 1:
                 self.sess.run([self.g_lr_update, self.d_lr_update])
@@ -200,35 +195,29 @@ class Trainer(object):
                 #prev_measure = cur_measure
 
     def build_model(self):
-        self.x = self.data_loader #rgb
-        # print (self.x.get_shape()) #16 3 64 64
+        self.x = self.data_loader #rgb #16 3 64 64
 
         self.normalgt = self.normal_loader
         self.maskgt = self.mask_loader
-        self.lightgt = self.light_loader
-        # print (self.normalgt.get_shape()) #16 3 64 64
+        self.lightgt = self.light_loader #16 27
 
-        print (self.lightgt.get_shape()) #16 27
-
-        # self.lightgt = templight(self)
-        # # print (self.lightgt.shape) # 9 3
-        # self.shadinggt = getshading(self.normalgt, self.lightgt)
-        # # print (self.shadinggt.get_shape())
-        # self.shadinggt = tf.transpose(self.shadinggt,[0, 3, 1, 2])
-        # # print (self.shadinggt.get_shape())
-        # self.albedogt = self.x / (self.shadinggt + 1e-6)
-        # print (self.albedogt.get_shape())
+        self.shadinggt = getshading(self.normalgt, self.lightgt)
+        self.albedogt = tf.clip_by_value(self.x/(self.shadinggt + 1e-3), 0, 10)
+        # print (self.shadinggt.get_shape()) #16 3 64 64
+        # print (self.albedogt.get_shape()) #16 3 64 64
 
         x = norm_img(self.x)
         normalgt = norm_img(self.normalgt)
         maskgt = norm_img(self.maskgt)
+        shadinggt = norm_img(self.shadinggt)
+        albedogt = norm_img(self.albedogt)
 
         self.z = tf.random_uniform(
                 (tf.shape(x)[0], self.z_num), minval=-1.0, maxval=1.0)
         self.k_t = tf.Variable(0., trainable=False, name='k_t')
 
-        G, mask, self.G_var = GeneratorCNN(
-                self.x, self.channel, self.z_num, self.repeat_num,
+        G, mask, shading, albedo, recon, self.G_var = GeneratorCNN(
+                self.x, self.lightgt, albedogt, self.channel, self.z_num, self.repeat_num,
                 self.conv_hidden_num, self.data_format, reuse=False)
 
         # Z, z_n, self.Enc_var = Encoder(
@@ -251,6 +240,10 @@ class Trainer(object):
         self.G = denorm_img(G, self.data_format)
         self.mask = denorm_img(mask, self.data_format)
 
+        self.shading = denorm_img(shading, self.data_format)
+        self.albedo = denorm_img(albedo, self.data_format)
+        self.recon = denorm_img(recon, self.data_format)
+
         self.AE_G, self.AE_x = denorm_img(AE_G, self.data_format), denorm_img(AE_x, self.data_format)
         # print (self.AE_x.get_shape) # 16 64 64 3
 
@@ -266,9 +259,9 @@ class Trainer(object):
 
         self.d_loss = self.d_loss_real - self.k_t * self.d_loss_fake
         # self.g_loss = tf.reduce_mean(tf.abs(AE_G - G))
-        # self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + tf.reduce_mean(tf.abs(G - x))
-        self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + tf.reduce_mean(tf.abs(G - normalgt)) + tf.reduce_mean(tf.abs(mask - maskgt))
         # self.g_loss = tf.reduce_mean(tf.abs(G - normalgt))
+        # self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + tf.reduce_mean(tf.abs(G - x))
+        self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + tf.reduce_mean(tf.abs(G - normalgt)) + tf.reduce_mean(tf.abs(mask - maskgt)) + tf.reduce_mean(tf.abs(recon - x))
 
         d_optim = d_optimizer.minimize(self.d_loss, var_list=self.D_var)
         g_optim = g_optimizer.minimize(self.g_loss, global_step=self.step, var_list=self.G_var)
@@ -327,6 +320,29 @@ class Trainer(object):
         mask_path = os.path.join(path, '{}_M.png'.format(idx))
         save_image(mask, mask_path)
         print("[*] Samples saved: {}".format(mask_path))
+
+    def recontest(self, inputs, path, idx=None):
+        inputs = inputs.transpose([0, 3, 1, 2])
+
+        shading = self.sess.run(self.shading, {self.x: inputs})
+        shading_path = os.path.join(path, '{}_S.png'.format(idx))
+        save_image(shading, shading_path)
+        print("[*] Samples saved: {}".format(shading_path))
+
+        albedo = self.sess.run(self.albedo, {self.x: inputs})
+        albedo_path = os.path.join(path, '{}_A.png'.format(idx))
+        save_image(albedo, albedo_path)
+        print("[*] Samples saved: {}".format(albedo_path))
+
+        recon = self.sess.run(self.recon, {self.x: inputs})
+        recon_path = os.path.join(path, '{}_R.png'.format(idx))
+        save_image(recon, recon_path)
+        print("[*] Samples saved: {}".format(recon_path))
+
+        # mask = self.sess.run(self.mask, {self.x: inputs})
+        # mask_path = os.path.join(path, '{}_M.png'.format(idx))
+        # save_image(mask, mask_path)
+        # print("[*] Samples saved: {}".format(mask_path))
 
 
 
@@ -442,30 +458,20 @@ class Trainer(object):
         x = self.data_loader.eval(session=self.sess)
         if self.data_format == 'NCHW':
             x = x.transpose([0, 2, 3, 1]) # for image saving 16 3 64 64 to 16 64 64 3
-            # x = x.transpose([0, 1, 3, 4, 2])
         return x
 
     def get_normal_from_loader(self):
         x = self.normal_loader.eval(session=self.sess)
         if self.data_format == 'NCHW':
             x = x.transpose([0, 2, 3, 1])
-            # x = x.transpose([0, 1, 3, 4, 2])
         return x
 
     def get_mask_from_loader(self):
         x = self.mask_loader.eval(session=self.sess)
         if self.data_format == 'NCHW':
             x = x.transpose([0, 2, 3, 1])
-            # x = x.transpose([0, 1, 3, 4, 2])
         return x
 
     def get_light_from_loader(self):
         x = self.light_loader.eval(session=self.sess)
-
-        # print (x)
-        # print (x[3])
-        # # print (x[0].dtype)
-        # # print (x.get_shape()) # 16 1
-        # print (x.shape) # 16 27
-        # x = strtoarray(x,self.batch_size)
         return x

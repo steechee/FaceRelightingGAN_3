@@ -149,86 +149,207 @@ def getmatrix(L):
     return M
 
 
+
+
 def getshading(normal, light):
-    # normal 100*64*64*3
+    # normal 16*3*64*64
     # light 100*10*3
 
     # print (normal.shape) 16 3 64 64
-    # print (light.shape) 9 3
+    # print (light.shape) 16 27
 
-    normal = tf.transpose(normal,[0, 2, 3, 1])
+    normal = tf.transpose(normal,[0, 2, 3, 1]) # 16 64 64 3
 
-    nSample = normal.shape[0] # batch_size 100
+    nSample = normal.shape[0] # batch_size 16
     nPixel = normal.shape[1]*normal.shape[2] # 64*64 = 4096
 
-    Lr = light[:,0] # 100*10
-    Lg = light[:,1]
-    Lb = light[:,2]
 
-    # Lr_bw = light[:,:,0] # 100*10
-    # Lr = Lr_bw[:,0:9] # 100*9
-    # Lg_bw = light[:,:,1]
-    # Lg = Lg_bw[:,0:9]
-    # Lb_bw = light[:,:,2]
-    # Lb = Lb_bw[:,0:9]
+    Lr = light[:,:9] # 16 9
+    Lg = light[:,9:18] # 16 9
+    Lb = light[:,18:] # 16 9
 
 
-    Ns = tf.reshape(normal,[nSample, nPixel, 3]) # 100*4096*3
-    N_ext = tf.ones([nSample, nPixel, 1], dtype=tf.float32) # 100*4096*1
-    Ns = tf.concat([Ns, N_ext], axis=-1) # 100*4096*4
+    Ns = tf.reshape(normal,[nSample, nPixel, 3]) # 16*4096*3
+    N_ext = tf.ones([nSample, nPixel, 1], dtype=tf.float32) # 16*4096*1
+    Ns = tf.concat([Ns, N_ext], axis=-1) # 16*4096*4
 
     for idx in range(nSample):
         nt = Ns[idx] # 4096*4
 
-        mr = getmatrix(Lr)
-        mg = getmatrix(Lg)
-        mb = getmatrix(Lb)
+        mr = getmatrix(Lr[idx]) # 4 4
+        mg = getmatrix(Lg[idx])
+        mb = getmatrix(Lb[idx])
 
         sr = tf.matmul(nt,mr)*nt # 4096*4
         sg = tf.matmul(nt,mg)*nt
         sb = tf.matmul(nt,mb)*nt
 
         s1 = tf.reshape(tf.reduce_sum(sr,axis=-1), [1,64,64]) # should be > 0 but lr_bw[idx,9] constant often < 0
-        s2 = tf.reshape(tf.reduce_sum(sg,axis=-1), [1,64,64])
+        s2 = tf.reshape(tf.reduce_sum(sg,axis=-1), [1,64,64]) # 1 64 64
         s3 = tf.reshape(tf.reduce_sum(sb,axis=-1), [1,64,64])
 
-        s = tf.stack([s1,s2,s3],axis=3)
+        s = tf.stack([s1,s2,s3],axis=3) # 1 64 64 3
 
         if idx == 0:
             shading = s
         else:
-            shading = tf.concat([shading,s],axis=0)
+            shading = tf.concat([shading,s],axis=0) # 16 64 64 3
+
+    shading = tf.transpose(shading, [0, 3, 1, 2]) # 16 3 64 64
 
     return shading
 
 
-# def strtoarray(queue, batch_size):
-#     # input : 16 1
-#     # output : 16 27 or 16 9 3 or 16 3 9
+def getshadingnp(normal, light):
+    # normal 16*3*64*64
+    # light 100*10*3
+
+    # print (normal.shape) 16 3 64 64
+    # print (light.shape) 16 27
+
+    normal = np.transpose(normal,[0, 2, 3, 1]) # 16 64 64 3
+
+    nSample = normal.shape[0] # batch_size 16
+    nPixel = normal.shape[1]*normal.shape[2] # 64*64 = 4096
+
+
+    Lr = light[:,:9] # 16 9
+    Lg = light[:,9:18] # 16 9
+    Lb = light[:,18:] # 16 9
+
+
+    Ns = np.reshape(normal,[nSample, nPixel, 3]) # 16*4096*3
+    N_ext = np.ones([nSample, nPixel, 1], dtype=np.float32) # 16*4096*1
+    Ns = np.concatenate([Ns, N_ext], axis=-1) # 16*4096*4
+
+    for idx in range(nSample):
+        nt = Ns[idx] # 4096*4
+
+        mr = getmatrixnp(Lr[idx]) # 4 4
+        mg = getmatrixnp(Lg[idx])
+        mb = getmatrixnp(Lb[idx])
+
+        sr = np.matmul(nt,mr)*nt # 4096*4
+        sg = np.matmul(nt,mg)*nt
+        sb = np.matmul(nt,mb)*nt
+
+        s1 = np.reshape(np.sum(sr,axis=-1), [1,64,64]) # should be > 0 but lr_bw[idx,9] constant often < 0
+        s2 = np.reshape(np.sum(sg,axis=-1), [1,64,64]) # 1 64 64
+        s3 = np.reshape(np.sum(sb,axis=-1), [1,64,64])
+
+        s = np.stack([s1,s2,s3],axis=3) # 1 64 64 3
+
+        if idx == 0:
+            shading = s
+        else:
+            shading = np.concatenate([shading,s],axis=0) # 16 64 64 3
+
+    shading = np.transpose(shading, [0, 3, 1, 2]) # 16 3 64 64
+    shading.astype(np.float32)
+    return shading
+
+
+def getmatrixnp(L):
+
+    c1 = 0.429043
+    c2 = 0.511664
+    c3 = 0.743152
+    c4 = 0.886227
+    c5 = 0.247708
+
+    # print L.get_shape()
+    # M = [ [c1*L9, c1*L5, c1*L8, c2*L4],
+    # [c1*L5   -c1*L9   c1*L6   c2*L2
+    # c1*L8   c1*L6    c3*L7   c2*L3
+    # c2*L4   c2*L2    c2*L3   c4*L1 - c5*L7 ]
+
+    e0 = [0,0,0,0,0,0,0,0,0]
+    e1 = [1,0,0,0,0,0,0,0,0]
+    e2 = [0,1,0,0,0,0,0,0,0]
+    e3 = [0,0,1,0,0,0,0,0,0]
+    e4 = [0,0,0,1,0,0,0,0,0]
+    e5 = [0,0,0,0,1,0,0,0,0]
+    e6 = [0,0,0,0,0,1,0,0,0]
+    e7 = [0,0,0,0,0,0,1,0,0]
+    e8 = [0,0,0,0,0,0,0,1,0]
+    e9 = [0,0,0,0,0,0,0,0,1]
+
+
+    L = np.diag(L)
+    L.astype(np.float32)
+
+    M11 = c1 * np.matmul(np.matmul([e9,e0,e0,e0],L),np.transpose([e9,e0,e0,e0]))
+    M12 = c1 * np.matmul(np.matmul([e5,e0,e0,e0],L),np.transpose([e0,e5,e0,e0]))
+    M13 = c1 * np.matmul(np.matmul([e8,e0,e0,e0],L),np.transpose([e0,e0,e8,e0]))
+    M14 = c2 * np.matmul(np.matmul([e4,e0,e0,e0],L),np.transpose([e0,e0,e0,e4]))
+    M21 = c1 * np.matmul(np.matmul([e0,e5,e0,e0],L),np.transpose([e5,e0,e0,e0]))
+    M22 = -c1 * np.matmul(np.matmul([e0,e9,e0,e0],L),np.transpose([e0,e9,e0,e0]))
+    M23 = c1 * np.matmul(np.matmul([e0,e6,e0,e0],L),np.transpose([e0,e0,e6,e0]))
+    M24 = c2 * np.matmul(np.matmul([e0,e2,e0,e0],L),np.transpose([e0,e0,e0,e2]))
+    M31 = c1 * np.matmul(np.matmul([e0,e0,e8,e0],L),np.transpose([e8,e0,e0,e0]))
+    M32 = c1 * np.matmul(np.matmul([e0,e0,e6,e0],L),np.transpose([e0,e6,e0,e0]))
+    M33 = c3 * np.matmul(np.matmul([e0,e0,e7,e0],L),np.transpose([e0,e0,e7,e0]))
+    M34 = c2 * np.matmul(np.matmul([e0,e0,e3,e0],L),np.transpose([e0,e0,e0,e3]))
+    M41 = c2 * np.matmul(np.matmul([e0,e0,e0,e4],L),np.transpose([e4,e0,e0,e0]))
+    M42 = c2 * np.matmul(np.matmul([e0,e0,e0,e2],L),np.transpose([e0,e2,e0,e0]))
+    M43 = c2 * np.matmul(np.matmul([e0,e0,e0,e3],L),np.transpose([e0,e0,e3,e0]))
+    M44 = c4 * np.matmul(np.matmul([e0,e0,e0,e1],L),np.transpose([e0,e0,e0,e1])) - c5 * np.matmul(np.matmul([e0,e0,e0,e7],L),np.transpose([e0,e0,e0,e7]))
+
+    M = M11 + M12 + M13 + M14 + M21 + M22 + M23 + M24 + M31 + M32 + M33 + M34 + M41 + M42 + M43 + M44
+
+    M.astype(np.float32)
+
+    return M
+
 #
-#     for idx in range(batch_size): # 16
-#         splitcomma = queue[idx][0].split(',')
-#         for i in range(len(splitcomma)): #27
-#             if i == 0:
-#                 element = float(splitcomma[i].split('[')[-1])
-#                 array = np.array([element])
-#             elif i > 0 and i != len(splitcomma)-1:
-#                 element = np.array([float(splitcomma[i])])
-#                 array = np.concatenate((array,element),axis=-1)
-#             else:
-#                 element = np.array([float(splitcomma[i].split(']')[0])])
-#                 array = np.concatenate((array,element),axis=-1)
-#         # print (array.shape) # (27,)
-#         array = np.reshape(array,[len(splitcomma),1])
-#         # print (array.shape) # (27,1)
+# def getshading(normal, light):
+#     # normal 100*64*64*3
+#     # light 100*10*3
+#
+#     # print (normal.shape) 16 3 64 64
+#     # print (light.shape) 9 3
+#
+#     normal = tf.transpose(normal,[0, 2, 3, 1])
+#
+#     nSample = normal.shape[0] # batch_size 100
+#     nPixel = normal.shape[1]*normal.shape[2] # 64*64 = 4096
+#
+#     Lr = light[:,0] # 100*10
+#     Lg = light[:,1]
+#     Lb = light[:,2]
+#
+#     # Lr_bw = light[:,:,0] # 100*10
+#     # Lr = Lr_bw[:,0:9] # 100*9
+#     # Lg_bw = light[:,:,1]
+#     # Lg = Lg_bw[:,0:9]
+#     # Lb_bw = light[:,:,2]
+#     # Lb = Lb_bw[:,0:9]
+#
+#
+#     Ns = tf.reshape(normal,[nSample, nPixel, 3]) # 100*4096*3
+#     N_ext = tf.ones([nSample, nPixel, 1], dtype=tf.float32) # 100*4096*1
+#     Ns = tf.concat([Ns, N_ext], axis=-1) # 100*4096*4
+#
+#     for idx in range(nSample):
+#         nt = Ns[idx] # 4096*4
+#
+#         mr = getmatrix(Lr)
+#         mg = getmatrix(Lg)
+#         mb = getmatrix(Lb)
+#
+#         sr = tf.matmul(nt,mr)*nt # 4096*4
+#         sg = tf.matmul(nt,mg)*nt
+#         sb = tf.matmul(nt,mb)*nt
+#
+#         s1 = tf.reshape(tf.reduce_sum(sr,axis=-1), [1,64,64]) # should be > 0 but lr_bw[idx,9] constant often < 0
+#         s2 = tf.reshape(tf.reduce_sum(sg,axis=-1), [1,64,64])
+#         s3 = tf.reshape(tf.reduce_sum(sb,axis=-1), [1,64,64])
+#
+#         s = tf.stack([s1,s2,s3],axis=3)
 #
 #         if idx == 0:
-#             out = array
+#             shading = s
 #         else:
-#             out = np.concatenate([out,array],axis=1)
+#             shading = tf.concat([shading,s],axis=0)
 #
-#     # print (out.shape) # 27,16
-#     out = np.transpose(out,[1,0])
-#     # print (out.shape) # 16 27
-#
-#     return out
+#     return shading

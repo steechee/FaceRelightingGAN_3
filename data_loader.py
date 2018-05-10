@@ -22,17 +22,9 @@ def get_loader(root, batch_size, scale_size, data_format, split=None, is_graysca
         if len(rgbpaths) != 0:
             break
 
-
-    # for ext in ["csv"]:
-    #     lightpaths = sorted(glob("{}/light/*.{}".format(root, ext))) # csv
-    #
-    #     if len(lightpaths) != 0:
-    #         break
-
     with Image.open(rgbpaths[0]) as img:
         w, h = img.size
         shape = [h, w, 3]
-        # lightshape = [9, 3]
 
     filename_queue = tf.train.string_input_producer(list(rgbpaths), shuffle=False, seed=seed)
     reader = tf.WholeFileReader()
@@ -48,15 +40,6 @@ def get_loader(root, batch_size, scale_size, data_format, split=None, is_graysca
     Mfilename, Mdata = reader.read(Mfilename_queue)
     mask = tf_decode(Mdata, channels=3)
 
-    # Lfilename_queue = tf.train.string_input_producer(list(lightpaths), shuffle=False, seed=seed)
-    # Lreader = tf.TextLineReader()
-    # Lfilename, Ldata = Lreader.read(Lfilename_queue)
-    # light = tf.decode_csv(Ldata, record_defaults = [
-    # [0.], [0.], [0.], [0.], [0.], [0.], [0.], [0.], [0.],
-    # [0.], [0.], [0.], [0.], [0.], [0.], [0.], [0.], [0.],
-    # [0.], [0.], [0.], [0.], [0.], [0.], [0.], [0.], [0.]])
-
-
     if is_grayscale:
         pass
         # image = tf.image.rgb_to_grayscale(image)
@@ -69,18 +52,11 @@ def get_loader(root, batch_size, scale_size, data_format, split=None, is_graysca
     capacity = min_after_dequeue + 3 * batch_size # 5000+3*16?
 
     rgbqueue, normalqueue, maskqueue = tf.train.batch(
-    # rgbqueue, normalqueue, maskqueue, lightqueue = tf.train.batch(
         [image, normal, mask], batch_size=batch_size,
-        # [image, normal, mask, light], batch_size=batch_size,
         num_threads=1, capacity=capacity, name='synthetic_inputs')
-        # 3 16 3 64 64
-    # print rgbqueue.get_shape() # 16 64 64 3
-    # print normalqueue.get_shape()
-    # print maskqueue.get_shape()
 
 
     if data_format == 'NCHW':
-        # queue = tf.transpose(queue, [0, 3, 1, 2])
         rgbqueue = tf.transpose(rgbqueue, [0, 3, 1, 2])
         normalqueue = tf.transpose(normalqueue, [0, 3, 1, 2])
         maskqueue = tf.transpose(maskqueue, [0, 3, 1, 2])
@@ -89,6 +65,5 @@ def get_loader(root, batch_size, scale_size, data_format, split=None, is_graysca
         pass
     else:
         raise Exception("[!] Unkown data_format: {}".format(data_format))
-    print (rgbqueue.get_shape())
-    # return tf.to_float(rgbqueue), tf.to_float(normalqueue), tf.to_float(maskqueue), tf.to_float(lightqueue)
+
     return tf.to_float(rgbqueue), tf.to_float(normalqueue), tf.to_float(maskqueue)

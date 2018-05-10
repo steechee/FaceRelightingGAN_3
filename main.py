@@ -26,7 +26,6 @@ def main(config):
         batch_size = config.sample_per_image
         do_shuffle = False
 
-    # rgb_loader, normal_loader, mask_loader, light_loader = get_loader(
     rgb_loader, normal_loader, mask_loader = get_loader(
             data_path, config.batch_size, config.input_scale_size,
             config.data_format, config.split)
@@ -34,7 +33,6 @@ def main(config):
             data_path, config.batch_size, config.input_scale_size,
             config.data_format, config.split)
     trainer = Trainer(config, rgb_loader, normal_loader, mask_loader, light_loader)
-    # trainer = Trainer(config, rgb_loader, normal_loader, mask_loader)
 
     if config.is_train:
         save_config(config)
