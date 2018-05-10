@@ -135,8 +135,11 @@ class Trainer(object):
         mask_fixed = self.get_mask_from_loader()
         light_fixed = self.get_light_from_loader()
 
-        shading_fixed = np.transpose(getshadingnp(np.transpose(normal_fixed,[0, 3, 1, 2]), light_fixed),[0, 2, 3, 1])
-        albedo_fixed = np.clip(x_fixed/(shading_fixed + 1e-3), 0, 10)
+        shading_fixed = np.transpose(getshadingnp(np.transpose((normal_fixed/127.5 -1),[0, 3, 1, 2]), light_fixed),[0, 2, 3, 1])
+        albedo_fixed = np.clip((x_fixed/127.5 -1)/(shading_fixed + 1e-3), 0, 10)
+
+        shading_fixed = np.clip(((shading_fixed+1)*127.5), 0, 255)
+        albedo_fixed = np.clip(((albedo_fixed+1)*127.5), 0, 255)
 
         save_image(x_fixed, '{}/x_fixed_rgb.png'.format(self.model_dir))
         save_image(normal_fixed, '{}/x_fixed_normal.png'.format(self.model_dir))
@@ -181,8 +184,8 @@ class Trainer(object):
                 print("[{}/{}] Loss_D: {:.6f} Loss_G: {:.6f} measure: {:.4f}, k_t: {:.4f}, d_loss_real: {:.4f}, d_loss_fake: {:.4f}, balance: {:.4f}". \
                       format(step, self.max_step, d_loss, g_loss, measure, k_t, d_loss_real, d_loss_fake, balance))
 
-            # if step % (self.log_step * 10) == 0: # every 500 steps
-            if step % (self.log_step) == 0: #
+            if step % (self.log_step * 10) == 0: # every 500 steps
+            # if step % (self.log_step) == 0: #
                 # x_fake = self.generate(z_fixed, self.model_dir, idx=step)
                 self.generate(x_fixed, self.model_dir, idx=step)
                 self.autoencode(x_fixed, self.model_dir, idx=step)
@@ -201,24 +204,38 @@ class Trainer(object):
         self.maskgt = self.mask_loader
         self.lightgt = self.light_loader #16 27
 
-        self.shadinggt = getshading(self.normalgt, self.lightgt)
-        self.albedogt = tf.clip_by_value(self.x/(self.shadinggt + 1e-3), 0, 10)
         # print (self.shadinggt.get_shape()) #16 3 64 64
         # print (self.albedogt.get_shape()) #16 3 64 64
+
+        # print (self.x.dtype)
+        # print (self.shadinggt.dtype)
+        # print (self.albedogt.dtype)
 
         x = norm_img(self.x)
         normalgt = norm_img(self.normalgt)
         maskgt = norm_img(self.maskgt)
-        shadinggt = norm_img(self.shadinggt)
-        albedogt = norm_img(self.albedogt)
+
+        shadinggt = getshading(normalgt, self.lightgt)
+        albedogt = tf.clip_by_value(x/(shadinggt + 1e-3), 0, 10)
+
+        # shadinggt = norm_img(self.shadinggt)
+        # albedogt = norm_img(self.albedogt)
+
+        # print (x.dtype)
+        # print (shadinggt.dtype)
+        # print (albedogt.dtype)
 
         self.z = tf.random_uniform(
                 (tf.shape(x)[0], self.z_num), minval=-1.0, maxval=1.0)
         self.k_t = tf.Variable(0., trainable=False, name='k_t')
 
         G, mask, shading, albedo, recon, self.G_var = GeneratorCNN(
-                self.x, self.lightgt, albedogt, self.channel, self.z_num, self.repeat_num,
+                self.x, self.lightgt, self.channel, self.z_num, self.repeat_num,
                 self.conv_hidden_num, self.data_format, reuse=False)
+
+        # print (G.dtype)
+        # print (shading.dtype)
+        # print (albedo.dtype)
 
         # Z, z_n, self.Enc_var = Encoder(
         #         self.x, self.channel, self.z_num,
@@ -261,7 +278,7 @@ class Trainer(object):
         # self.g_loss = tf.reduce_mean(tf.abs(AE_G - G))
         # self.g_loss = tf.reduce_mean(tf.abs(G - normalgt))
         # self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + tf.reduce_mean(tf.abs(G - x))
-        self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + tf.reduce_mean(tf.abs(G - normalgt)) + tf.reduce_mean(tf.abs(mask - maskgt)) + tf.reduce_mean(tf.abs(recon - x))
+        self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + tf.reduce_mean(tf.abs(G - normalgt)) + tf.reduce_mean(tf.abs(mask - maskgt)) + tf.reduce_mean(tf.abs(shading - shadinggt)) + tf.reduce_mean(tf.abs(albedo - albedogt)) + tf.reduce_mean(tf.abs(recon - x))
 
         d_optim = d_optimizer.minimize(self.d_loss, var_list=self.D_var)
         g_optim = g_optimizer.minimize(self.g_loss, global_step=self.step, var_list=self.G_var)

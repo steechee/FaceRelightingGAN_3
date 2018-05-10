@@ -4,7 +4,7 @@ slim = tf.contrib.slim
 from utils import getmatrix
 from utils import getshading
 
-def GeneratorCNN(x, light, albedo, output_num, z_num, repeat_num, hidden_num, data_format, reuse):
+def GeneratorCNN(x, light, output_num, z_num, repeat_num, hidden_num, data_format, reuse):
     with tf.variable_scope("G", reuse=reuse) as vs:
 
         ## Encoder
@@ -53,16 +53,31 @@ def GeneratorCNN(x, light, albedo, output_num, z_num, repeat_num, hidden_num, da
 
         maskout = slim.conv2d(x_m, 3, 3, 1, activation_fn=None, data_format=data_format)
 
+        ## albedo decoder
+        z_a = slim.fully_connected(z, z_num, activation_fn=None)
+
+        num_output = int(np.prod([8, 8, hidden_num]))
+        x_a = slim.fully_connected(z_a, num_output, activation_fn=None)
+        x_a = reshape(x_a, 8, 8, hidden_num, data_format)
+
+        for idx in range(repeat_num):
+            x_a = slim.conv2d(x_a, hidden_num, 3, 1, activation_fn=tf.nn.elu, data_format=data_format)
+            x_a = slim.conv2d(x_a, hidden_num, 3, 1, activation_fn=tf.nn.elu, data_format=data_format)
+            if idx < repeat_num - 1:
+                x_a = upscale(x_a, 2, data_format)
+
+        albedoout = slim.conv2d(x_a, 3, 3, 1, activation_fn=None, data_format=data_format)
+
+
+        ## reconstruction
 
         shading = getshading(normalout,light) # 16 3 64 64
 
-        albedo = albedo
-
-        recon = shading*albedo
+        recon = shading*albedoout
 
 
     variables = tf.contrib.framework.get_variables(vs)
-    return normalout, maskout, shading, albedo, recon, variables
+    return normalout, maskout, shading, albedoout, recon, variables
 
 def DiscriminatorCNN(x, input_channel, z_num, repeat_num, hidden_num, data_format):
     with tf.variable_scope("D") as vs:
