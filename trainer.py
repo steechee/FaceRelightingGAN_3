@@ -130,10 +130,8 @@ class Trainer(object):
     def train(self):
         z_fixed = np.random.uniform(-1, 1, size=(self.batch_size, self.z_num))
 
-        x_fixed = self.get_image_from_loader() # 16 64 64 3
-        normal_fixed = self.get_normal_from_loader()
-        mask_fixed = self.get_mask_from_loader()
-        light_fixed = self.get_light_from_loader()
+        x_fixed, normal_fixed, mask_fixed, light_fixed = self.get_image_from_loader() # 16 64 64 3
+
 
         shading_fixed = np.transpose(getshadingnp(np.transpose((normal_fixed/127.5 -1),[0, 3, 1, 2]), light_fixed),[0, 2, 3, 1])
         albedo_fixed = np.clip((x_fixed/127.5 -1)/(shading_fixed + 1e-3), 0, 10)
@@ -146,6 +144,7 @@ class Trainer(object):
         save_image(mask_fixed, '{}/x_fixed_mask.png'.format(self.model_dir))
         save_image(shading_fixed, '{}/x_fixed_shading.png'.format(self.model_dir))
         save_image(albedo_fixed, '{}/x_fixed_albedo.png'.format(self.model_dir))
+        save_image((1-mask_fixed/255.)*x_fixed, '{}/x_fixed_bg.png'.format(self.model_dir))
 
         prev_measure = 1
         measure_history = deque([0]*self.lr_update_step, self.lr_update_step)
@@ -189,7 +188,7 @@ class Trainer(object):
                 # x_fake = self.generate(z_fixed, self.model_dir, idx=step)
                 self.generate(x_fixed, self.model_dir, idx=step)
                 self.autoencode(x_fixed, self.model_dir, idx=step)
-                self.recontest(x_fixed, self.model_dir, idx=step)
+                # self.autoencode(x_fixed[0], self.model_dir, idx=step, x_fake=x_fake)
 
             if step % self.lr_update_step == self.lr_update_step - 1:
                 self.sess.run([self.g_lr_update, self.d_lr_update])
@@ -204,6 +203,7 @@ class Trainer(object):
         self.maskgt = self.mask_loader
         self.lightgt = self.light_loader #16 27
 
+        self.bggt = self.x * (255. - self.maskgt)/255.
         # print (self.shadinggt.get_shape()) #16 3 64 64
         # print (self.albedogt.get_shape()) #16 3 64 64
 
@@ -211,9 +211,11 @@ class Trainer(object):
         # print (self.shadinggt.dtype)
         # print (self.albedogt.dtype)
 
+
         x = norm_img(self.x)
         normalgt = norm_img(self.normalgt)
         maskgt = norm_img(self.maskgt)
+        # bggt = norm_img(self.bggt)
 
         shadinggt = getshading(normalgt, self.lightgt)
         albedogt = tf.clip_by_value(x/(shadinggt + 1e-3), 0, 10)
@@ -229,9 +231,10 @@ class Trainer(object):
                 (tf.shape(x)[0], self.z_num), minval=-1.0, maxval=1.0)
         self.k_t = tf.Variable(0., trainable=False, name='k_t')
 
-        G, mask, shading, albedo, recon, self.G_var = GeneratorCNN(
-                self.x, self.lightgt, self.channel, self.z_num, self.repeat_num,
+        G, mask, albedo, light, shading, recon, self.G_var = GeneratorCNN(
+                self.x, self.channel, self.z_num, self.repeat_num,
                 self.conv_hidden_num, self.data_format, reuse=False)
+
 
         # print (G.dtype)
         # print (shading.dtype)
@@ -248,11 +251,6 @@ class Trainer(object):
 
         # self.G_var = self.Enc_var + self.Dec_var
 
-        d_out, self.D_z, self.D_var = DiscriminatorCNN(
-                tf.concat([G, x], 0), self.channel, self.z_num, self.repeat_num,
-                self.conv_hidden_num, self.data_format)
-        AE_G, AE_x = tf.split(d_out, 2)
-        # print (AE_x.get_shape) # 16 3 64 64
 
         self.G = denorm_img(G, self.data_format)
         self.mask = denorm_img(mask, self.data_format)
@@ -261,7 +259,17 @@ class Trainer(object):
         self.albedo = denorm_img(albedo, self.data_format)
         self.recon = denorm_img(recon, self.data_format)
 
-        self.AE_G, self.AE_x = denorm_img(AE_G, self.data_format), denorm_img(AE_x, self.data_format)
+        self.out = self.mask/255.*self.recon + (1-(self.mask/255.))*tf.transpose(self.bggt,[0, 2, 3, 1])
+        out = tf.transpose(norm_img(self.out), [0, 3, 1, 2])
+
+
+        d_out, self.D_z, self.D_var = DiscriminatorCNN(
+        tf.concat([recon, x, out], 0), self.channel, self.z_num, self.repeat_num,
+        self.conv_hidden_num, self.data_format)
+        AE_G, AE_x, AE_mat = tf.split(d_out, 3)
+        # print (AE_x.get_shape) # 16 3 64 64
+
+        self.AE_G, self.AE_x, self.AE_mat = denorm_img(AE_G, self.data_format), denorm_img(AE_x, self.data_format), denorm_img(AE_mat, self.data_format)
         # print (self.AE_x.get_shape) # 16 64 64 3
 
         if self.optimizer == 'adam':
@@ -278,7 +286,16 @@ class Trainer(object):
         # self.g_loss = tf.reduce_mean(tf.abs(AE_G - G))
         # self.g_loss = tf.reduce_mean(tf.abs(G - normalgt))
         # self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + tf.reduce_mean(tf.abs(G - x))
-        self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + tf.reduce_mean(tf.abs(G - normalgt)) + tf.reduce_mean(tf.abs(mask - maskgt)) + tf.reduce_mean(tf.abs(shading - shadinggt)) + tf.reduce_mean(tf.abs(albedo - albedogt)) + tf.reduce_mean(tf.abs(recon - x))
+
+
+        self.normalloss = tf.reduce_mean(tf.abs(G - normalgt))
+        self.maskloss = tf.reduce_mean(tf.abs(mask - maskgt))
+        self.albedoloss = tf.reduce_mean(tf.abs(albedo - albedogt))
+        self.lightloss = tf.reduce_mean(tf.abs(light - self.lightgt))
+        self.shadingloss = tf.reduce_mean(tf.abs(shading - shadinggt))
+        self.reconloss = tf.reduce_mean(tf.abs(recon - x))
+
+        self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + self.normalloss + self.maskloss + self.albedoloss + self.lightloss + self.shadingloss + self.reconloss
 
         d_optim = d_optimizer.minimize(self.d_loss, var_list=self.D_var)
         g_optim = g_optimizer.minimize(self.g_loss, global_step=self.step, var_list=self.G_var)
@@ -299,6 +316,12 @@ class Trainer(object):
             tf.summary.scalar("loss/d_loss_real", self.d_loss_real),
             tf.summary.scalar("loss/d_loss_fake", self.d_loss_fake),
             tf.summary.scalar("loss/g_loss", self.g_loss),
+            tf.summary.scalar("loss/normalloss", self.normalloss),
+            tf.summary.scalar("loss/maskloss", self.maskloss),
+            tf.summary.scalar("loss/albedoloss", self.albedoloss),
+            tf.summary.scalar("loss/lightloss", self.lightloss),
+            tf.summary.scalar("loss/shadingloss", self.shadingloss),
+            tf.summary.scalar("loss/reconloss", self.reconloss),
             tf.summary.scalar("misc/measure", self.measure),
             tf.summary.scalar("misc/k_t", self.k_t),
             tf.summary.scalar("misc/d_lr", self.d_lr),
@@ -328,38 +351,34 @@ class Trainer(object):
         # print (inputs.shape)
         inputs = inputs.transpose([0, 3, 1, 2])
         # print (inputs.shape)
-        x = self.sess.run(self.G, {self.x: inputs})
-        x_path = os.path.join(path, '{}_G.png'.format(idx))
+        x, mask, shading, albedo, recon, out = self.sess.run([self.G, self.mask, self.shading, self.albedo, self.recon, self.out], {self.x: inputs})
+        print (np.amax(mask))
+        print (np.amin(mask))
+
+        x_path = os.path.join(path, '{}_N.png'.format(idx))
         save_image(x, x_path)
         print("[*] Samples saved: {}".format(x_path))
 
-        mask = self.sess.run(self.mask, {self.x: inputs})
         mask_path = os.path.join(path, '{}_M.png'.format(idx))
         save_image(mask, mask_path)
         print("[*] Samples saved: {}".format(mask_path))
 
-    def recontest(self, inputs, path, idx=None):
-        inputs = inputs.transpose([0, 3, 1, 2])
-
-        shading = self.sess.run(self.shading, {self.x: inputs})
-        shading_path = os.path.join(path, '{}_S.png'.format(idx))
-        save_image(shading, shading_path)
-        print("[*] Samples saved: {}".format(shading_path))
-
-        albedo = self.sess.run(self.albedo, {self.x: inputs})
         albedo_path = os.path.join(path, '{}_A.png'.format(idx))
         save_image(albedo, albedo_path)
         print("[*] Samples saved: {}".format(albedo_path))
 
-        recon = self.sess.run(self.recon, {self.x: inputs})
+        shading_path = os.path.join(path, '{}_S.png'.format(idx))
+        save_image(shading, shading_path)
+        print("[*] Samples saved: {}".format(shading_path))
+
         recon_path = os.path.join(path, '{}_R.png'.format(idx))
         save_image(recon, recon_path)
         print("[*] Samples saved: {}".format(recon_path))
 
-        # mask = self.sess.run(self.mask, {self.x: inputs})
-        # mask_path = os.path.join(path, '{}_M.png'.format(idx))
-        # save_image(mask, mask_path)
-        # print("[*] Samples saved: {}".format(mask_path))
+        out_path = os.path.join(path, '{}_out.png'.format(idx))
+        # bggt = np.clip(np.transpose((bggt + 1)*127.5, [0, 2, 3, 1]), 0, 255)
+        save_image(out, out_path)
+        print("[*] Samples saved: {}".format(out_path))
 
 
 
@@ -370,25 +389,26 @@ class Trainer(object):
         #     'fake': x_fake,
         # }
         # for key, img in items.items():
-            # if img is None:
-            #     continue
-            # if img.shape[3] in [1, 3]:
-                # print (img.shape) #16 64 64 3
-                # img = img.transpose([0, 3, 1, 2])
-                # print (img.shape) # 16 3 64 64
-                # print (key)
-                # print (img.shape)
-                # continue
+        #     if img is None:
+        #         continue
+        #     if img.shape[3] in [1, 3]:
+        #         img = img.transpose([0, 3, 1, 2])
 
             inputs = inputs.transpose([0, 3, 1, 2])
 
             # x_path = os.path.join(path, '{}_D_{}.png'.format(idx, key))
-            x_path = os.path.join(path, '{}_D.png'.format(idx))
-            # print (x_path)
-            x = self.sess.run(self.AE_x, {self.x: inputs})
-            # print (x.shape) # fail
+            x, recond, out = self.sess.run([self.AE_x, self.AE_G, self.AE_mat], {self.x: inputs})
+            x_path = os.path.join(path, '{}_D_real.png'.format(idx))
             save_image(x, x_path)
             print("[*] Samples saved: {}".format(x_path))
+
+            recond_path = os.path.join(path, '{}_D_fake.png'.format(idx))
+            save_image(recond, recond_path)
+            print("[*] Samples saved: {}".format(recond_path))
+
+            out_path = os.path.join(path, '{}_D_matting.png'.format(idx))
+            save_image(out, out_path)
+            print("[*] Samples saved: {}".format(out_path))
 
 
     def encode(self, inputs):
@@ -472,23 +492,16 @@ class Trainer(object):
         save_image(all_G_z, '{}/all_G_z.png'.format(root_path), nrow=16)
 
     def get_image_from_loader(self):
-        x = self.data_loader.eval(session=self.sess)
-        if self.data_format == 'NCHW':
-            x = x.transpose([0, 2, 3, 1]) # for image saving 16 3 64 64 to 16 64 64 3
-        return x
+        # rgb = self.data_loader.eval(session=self.sess)
+        # normal = self.normal_loader.eval(session=self.sess)
+        # mask = self.mask_loader.eval(session=self.sess)
+        # light = self.light_loader.eval(session=self.sess)
 
-    def get_normal_from_loader(self):
-        x = self.normal_loader.eval(session=self.sess)
-        if self.data_format == 'NCHW':
-            x = x.transpose([0, 2, 3, 1])
-        return x
+        rgb, normal, mask, light = self.sess.run([self.data_loader, self.normal_loader, self.mask_loader, self.light_loader])
 
-    def get_mask_from_loader(self):
-        x = self.mask_loader.eval(session=self.sess)
         if self.data_format == 'NCHW':
-            x = x.transpose([0, 2, 3, 1])
-        return x
+            rgb = rgb.transpose([0, 2, 3, 1]) # for image saving 16 3 64 64 to 16 64 64 3
+            normal = normal.transpose([0, 2, 3, 1])
+            mask = mask.transpose([0, 2, 3, 1])
 
-    def get_light_from_loader(self):
-        x = self.light_loader.eval(session=self.sess)
-        return x
+        return rgb, normal, mask, light
