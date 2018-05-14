@@ -24,10 +24,12 @@ def get_light_loader(root, batch_size, scale_size, data_format, split=None, is_g
     capacity = min_after_dequeue + 3 * batch_size # 5000+3*16?
 
     Lqueue = tf.train.batch([light], batch_size=batch_size*27,
+    # Lqueue = tf.train.batch([light], batch_size=batch_size*30,
         num_threads=1, capacity=capacity,
         name='synthetic_lights')
 
     coeff = tf.string_to_number(Lqueue)
+    # out = tf.reshape(coeff, [16,30])
     out = tf.reshape(coeff, [16,27])
 
     return out

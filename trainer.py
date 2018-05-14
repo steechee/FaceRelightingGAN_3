@@ -217,8 +217,8 @@ class Trainer(object):
         maskgt = norm_img(self.maskgt)
         # bggt = norm_img(self.bggt)
 
-        shadinggt = getshading(normalgt, self.lightgt)
-        albedogt = tf.clip_by_value(x/(shadinggt + 1e-3), 0, 10)
+        # shadinggt = getshading(normalgt, self.lightgt)
+        # albedogt = tf.clip_by_value(x/(shadinggt + 1e-3), 0, 10)
 
         # shadinggt = norm_img(self.shadinggt)
         # albedogt = norm_img(self.albedogt)
@@ -292,12 +292,14 @@ class Trainer(object):
 
         self.normalloss = tf.reduce_mean(tf.abs(G - normalgt))
         self.maskloss = tf.reduce_mean(tf.abs(mask - maskgt))
-        self.albedoloss = tf.reduce_mean(tf.abs(albedo - albedogt))
-        self.lightloss = tf.reduce_mean(tf.abs(light - self.lightgt))
-        self.shadingloss = tf.reduce_mean(tf.abs(shading - shadinggt))
+        # self.albedoloss = tf.reduce_mean(tf.abs(albedo - albedogt))
+        self.lightloss = tf.reduce_mean(tf.abs(tf.concat([light[:,:9],light[:,10:19],light[:,20:29]],axis=-1) - self.lightgt))
+        # self.lightloss = tf.reduce_mean(tf.abs(light - self.lightgt))
+        # self.shadingloss = tf.reduce_mean(tf.abs(shading - shadinggt))
         self.reconloss = tf.reduce_mean(tf.abs(recon - x))
 
-        self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + self.normalloss + self.maskloss + self.albedoloss + self.lightloss + self.shadingloss + self.reconloss
+        self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + self.normalloss + self.maskloss + self.lightloss + self.reconloss
+        # self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + self.normalloss + self.maskloss + self.albedoloss + self.lightloss + self.shadingloss + self.reconloss
 
         d_optim = d_optimizer.minimize(self.d_loss, var_list=self.D_var)
         g_optim = g_optimizer.minimize(self.g_loss, global_step=self.step, var_list=self.G_var)
@@ -320,9 +322,9 @@ class Trainer(object):
             tf.summary.scalar("loss/g_loss", self.g_loss),
             tf.summary.scalar("loss/normalloss", self.normalloss),
             tf.summary.scalar("loss/maskloss", self.maskloss),
-            tf.summary.scalar("loss/albedoloss", self.albedoloss),
+            # tf.summary.scalar("loss/albedoloss", self.albedoloss),
             tf.summary.scalar("loss/lightloss", self.lightloss),
-            tf.summary.scalar("loss/shadingloss", self.shadingloss),
+            # tf.summary.scalar("loss/shadingloss", self.shadingloss),
             tf.summary.scalar("loss/reconloss", self.reconloss),
             tf.summary.scalar("misc/measure", self.measure),
             tf.summary.scalar("misc/k_t", self.k_t),
