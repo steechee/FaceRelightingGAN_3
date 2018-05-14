@@ -144,7 +144,7 @@ class Trainer(object):
         save_image(mask_fixed, '{}/x_fixed_mask.png'.format(self.model_dir))
         save_image(shading_fixed, '{}/x_fixed_shading.png'.format(self.model_dir))
         save_image(albedo_fixed, '{}/x_fixed_albedo.png'.format(self.model_dir))
-        save_image((1-mask_fixed/255.)*x_fixed, '{}/x_fixed_bg.png'.format(self.model_dir))
+        # save_image((1-mask_fixed/255.)*x_fixed, '{}/x_fixed_bg.png'.format(self.model_dir))
 
         prev_measure = 1
         measure_history = deque([0]*self.lr_update_step, self.lr_update_step)
@@ -183,8 +183,8 @@ class Trainer(object):
                 print("[{}/{}] Loss_D: {:.6f} Loss_G: {:.6f} measure: {:.4f}, k_t: {:.4f}, d_loss_real: {:.4f}, d_loss_fake: {:.4f}, balance: {:.4f}". \
                       format(step, self.max_step, d_loss, g_loss, measure, k_t, d_loss_real, d_loss_fake, balance))
 
-            if step % (self.log_step * 10) == 0: # every 500 steps
-            # if step % (self.log_step) == 0: #
+            # if step % (self.log_step * 10) == 0: # every 500 steps
+            if step % (self.log_step) == 0: #
                 # x_fake = self.generate(z_fixed, self.model_dir, idx=step)
                 self.generate(x_fixed, self.model_dir, idx=step)
                 self.autoencode(x_fixed, self.model_dir, idx=step)
@@ -203,7 +203,7 @@ class Trainer(object):
         self.maskgt = self.mask_loader
         self.lightgt = self.light_loader #16 27
 
-        self.bggt = self.x * (255. - self.maskgt)/255.
+        # self.bggt = self.x * (255. - self.maskgt)/255.
         # print (self.shadinggt.get_shape()) #16 3 64 64
         # print (self.albedogt.get_shape()) #16 3 64 64
 
@@ -259,7 +259,9 @@ class Trainer(object):
         self.albedo = denorm_img(albedo, self.data_format)
         self.recon = denorm_img(recon, self.data_format)
 
-        self.out = self.mask/255.*self.recon + (1-(self.mask/255.))*tf.transpose(self.bggt,[0, 2, 3, 1])
+        self.out = self.mask/255.*self.recon + (1-(self.mask/255.))*tf.transpose(self.x,[0, 2, 3, 1])
+        # self.out = self.mask/255.*self.recon + (1-(self.mask/255.))*tf.transpose(self.bggt,[0, 2, 3, 1])
+
         out = tf.transpose(norm_img(self.out), [0, 3, 1, 2])
 
 
