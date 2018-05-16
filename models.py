@@ -71,7 +71,8 @@ def GeneratorCNN(x, output_num, z_num, repeat_num, hidden_num, data_format, reus
         ## light decoder
         z_l = slim.fully_connected(z, z_num, activation_fn=None)
 
-        num_output = int(np.prod([3, 10]))
+        # num_output = int(np.prod([3, 10]))
+        num_output = int(np.prod([3, 9]))
         # print (num_output)
         lightout = slim.fully_connected(z_l, num_output, activation_fn=None)
 

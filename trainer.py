@@ -18,6 +18,7 @@ from utils import templight
 from utils import getmatrix
 from utils import getshading
 from utils import getshadingnp
+from utils import smoothnessloss
 
 def next(loader):
     return loader.next()[0].data.numpy()
@@ -125,7 +126,7 @@ class Trainer(object):
             g = tf.get_default_graph()
             g._finalized = False
 
-            self.build_test_model()
+            # self.build_test_model()
 
     def train(self):
         z_fixed = np.random.uniform(-1, 1, size=(self.batch_size, self.z_num))
@@ -134,7 +135,7 @@ class Trainer(object):
 
 
         shading_fixed = np.transpose(getshadingnp(np.transpose((normal_fixed/127.5 -1),[0, 3, 1, 2]), light_fixed),[0, 2, 3, 1])
-        albedo_fixed = np.clip((x_fixed/127.5 -1)/(shading_fixed + 1e-3), 0, 10)
+        albedo_fixed = np.clip((x_fixed/127.5 -1)/(shading_fixed + 1e-3), -10, 10)
 
         shading_fixed = np.clip(((shading_fixed+1)*127.5), 0, 255)
         albedo_fixed = np.clip(((albedo_fixed+1)*127.5), 0, 255)
@@ -183,8 +184,8 @@ class Trainer(object):
                 print("[{}/{}] Loss_D: {:.6f} Loss_G: {:.6f} measure: {:.4f}, k_t: {:.4f}, d_loss_real: {:.4f}, d_loss_fake: {:.4f}, balance: {:.4f}". \
                       format(step, self.max_step, d_loss, g_loss, measure, k_t, d_loss_real, d_loss_fake, balance))
 
-            # if step % (self.log_step * 10) == 0: # every 500 steps
-            if step % (self.log_step) == 0: #
+            if step % (self.log_step * 10) == 0: # every 500 steps
+            # if step % (self.log_step) == 0: #
                 # x_fake = self.generate(z_fixed, self.model_dir, idx=step)
                 self.generate(x_fixed, self.model_dir, idx=step)
                 self.autoencode(x_fixed, self.model_dir, idx=step)
@@ -217,8 +218,8 @@ class Trainer(object):
         maskgt = norm_img(self.maskgt)
         # bggt = norm_img(self.bggt)
 
-        # shadinggt = getshading(normalgt, self.lightgt)
-        # albedogt = tf.clip_by_value(x/(shadinggt + 1e-3), 0, 10)
+        shadinggt = getshading(normalgt, self.lightgt)
+        albedogt = tf.clip_by_value(x/(shadinggt + 1e-3), -10, 10)
 
         # shadinggt = norm_img(self.shadinggt)
         # albedogt = norm_img(self.albedogt)
@@ -290,16 +291,18 @@ class Trainer(object):
         # self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + tf.reduce_mean(tf.abs(G - x))
 
 
+        self.generatorloss = tf.reduce_mean(tf.abs(AE_G - G))
         self.normalloss = tf.reduce_mean(tf.abs(G - normalgt))
         self.maskloss = tf.reduce_mean(tf.abs(mask - maskgt))
-        # self.albedoloss = tf.reduce_mean(tf.abs(albedo - albedogt))
-        self.lightloss = tf.reduce_mean(tf.abs(tf.concat([light[:,:9],light[:,10:19],light[:,20:29]],axis=-1) - self.lightgt))
-        # self.lightloss = tf.reduce_mean(tf.abs(light - self.lightgt))
-        # self.shadingloss = tf.reduce_mean(tf.abs(shading - shadinggt))
+        self.albedoloss = tf.reduce_mean(tf.abs(albedo - albedogt))
+        self.albedosmoothloss = smoothnessloss(self.albedo) # albedo or self.albedo?
+        # self.lightloss = tf.reduce_mean(tf.abs(tf.concat([light[:,:9],light[:,10:19],light[:,20:29]],axis=-1) - self.lightgt))
+        self.lightloss = tf.reduce_mean(tf.abs(light - self.lightgt))
+        self.shadingloss = tf.reduce_mean(tf.abs(shading - shadinggt))
         self.reconloss = tf.reduce_mean(tf.abs(recon - x))
 
-        self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + self.normalloss + self.maskloss + self.lightloss + self.reconloss
-        # self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + self.normalloss + self.maskloss + self.albedoloss + self.lightloss + self.shadingloss + self.reconloss
+        # self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + self.normalloss + self.maskloss + self.lightloss + self.reconloss
+        self.g_loss = self.generatorloss + self.normalloss + self.maskloss + self.albedoloss + self.albedosmoothloss + self.lightloss + self.shadingloss + self.reconloss
 
         d_optim = d_optimizer.minimize(self.d_loss, var_list=self.D_var)
         g_optim = g_optimizer.minimize(self.g_loss, global_step=self.step, var_list=self.G_var)
@@ -312,19 +315,27 @@ class Trainer(object):
                 self.k_t, tf.clip_by_value(self.k_t + self.lambda_k * self.balance, 0, 1))
 
         self.summary_op = tf.summary.merge([
-            tf.summary.image("G", self.G),
-            tf.summary.image("AE_G", self.AE_G),
-            tf.summary.image("AE_x", self.AE_x),
+            tf.summary.image("AE_input", self.AE_x),
+            tf.summary.image("AE_recon", self.AE_G),
+            tf.summary.image("AE_matting", self.AE_mat),
+            tf.summary.image("G_normal", self.G),
+            tf.summary.image("G_mask", self.mask),
+            tf.summary.image("G_albedo", self.albedo),
+            tf.summary.image("G_shading", self.shading),
+            tf.summary.image("G_recon", self.recon),
+            tf.summary.image("G_out", self.out),
 
             tf.summary.scalar("loss/d_loss", self.d_loss),
             tf.summary.scalar("loss/d_loss_real", self.d_loss_real),
             tf.summary.scalar("loss/d_loss_fake", self.d_loss_fake),
             tf.summary.scalar("loss/g_loss", self.g_loss),
+            tf.summary.scalar("loss/generatorloss", self.generatorloss),
             tf.summary.scalar("loss/normalloss", self.normalloss),
             tf.summary.scalar("loss/maskloss", self.maskloss),
-            # tf.summary.scalar("loss/albedoloss", self.albedoloss),
+            tf.summary.scalar("loss/albedoloss", self.albedoloss),
+            tf.summary.scalar("loss/albedosmoothloss", self.albedosmoothloss),
             tf.summary.scalar("loss/lightloss", self.lightloss),
-            # tf.summary.scalar("loss/shadingloss", self.shadingloss),
+            tf.summary.scalar("loss/shadingloss", self.shadingloss),
             tf.summary.scalar("loss/reconloss", self.reconloss),
             tf.summary.scalar("misc/measure", self.measure),
             tf.summary.scalar("misc/k_t", self.k_t),
@@ -333,31 +344,31 @@ class Trainer(object):
             tf.summary.scalar("misc/balance", self.balance),
         ])
 
-    def build_test_model(self):
-        with tf.variable_scope("test") as vs:
-            # Extra ops for interpolation
-            z_optimizer = tf.train.AdamOptimizer(0.0001)
-
-            self.z_r = tf.get_variable("z_r", [self.batch_size, self.z_num], tf.float32)
-            self.z_r_update = tf.assign(self.z_r, self.z)
-
-        G_z_r, _ = GeneratorCNN(
-                self.z_r, self.conv_hidden_num, self.channel, self.repeat_num, self.data_format, reuse=True)
-
-        with tf.variable_scope("test") as vs:
-            self.z_r_loss = tf.reduce_mean(tf.abs(self.x - G_z_r))
-            self.z_r_optim = z_optimizer.minimize(self.z_r_loss, var_list=[self.z_r])
-
-        test_variables = tf.contrib.framework.get_variables(vs)
-        self.sess.run(tf.variables_initializer(test_variables))
+    # def build_test_model(self):
+        # with tf.variable_scope("test") as vs:
+        #     # Extra ops for interpolation
+        #     z_optimizer = tf.train.AdamOptimizer(0.0001)
+        #
+        #     self.z_r = tf.get_variable("z_r", [self.batch_size, self.z_num], tf.float32)
+        #     self.z_r_update = tf.assign(self.z_r, self.z)
+        #
+        # G_z_r, _ = GeneratorCNN(
+        #         self.z_r, self.conv_hidden_num, self.channel, self.repeat_num, self.data_format, reuse=True)
+        #
+        # with tf.variable_scope("test") as vs:
+        #     self.z_r_loss = tf.reduce_mean(tf.abs(self.x - G_z_r))
+        #     self.z_r_optim = z_optimizer.minimize(self.z_r_loss, var_list=[self.z_r])
+        #
+        # test_variables = tf.contrib.framework.get_variables(vs)
+        # self.sess.run(tf.variables_initializer(test_variables))
 
     def generate(self, inputs, path, idx=None):
         # print (inputs.shape)
         inputs = inputs.transpose([0, 3, 1, 2])
         # print (inputs.shape)
         x, mask, shading, albedo, recon, out = self.sess.run([self.G, self.mask, self.shading, self.albedo, self.recon, self.out], {self.x: inputs})
-        print (np.amax(mask))
-        print (np.amin(mask))
+        # print (np.amax(mask))
+        # print (np.amin(mask))
 
         x_path = os.path.join(path, '{}_N.png'.format(idx))
         save_image(x, x_path)
@@ -402,6 +413,7 @@ class Trainer(object):
 
             # x_path = os.path.join(path, '{}_D_{}.png'.format(idx, key))
             x, recond, out = self.sess.run([self.AE_x, self.AE_G, self.AE_mat], {self.x: inputs})
+
             x_path = os.path.join(path, '{}_D_real.png'.format(idx))
             save_image(x, x_path)
             print("[*] Samples saved: {}".format(x_path))
@@ -466,34 +478,41 @@ class Trainer(object):
             save_image(img, os.path.join(root_path, 'test{}_interp_D_{}.png'.format(step, idx)), nrow=10 + 2)
 
     def test(self):
-        root_path = "./"#self.model_dir
+        # root_path = "./"#self.model_dir
 
         all_G_z = None
         for step in range(3):
-            real1_batch = self.get_image_from_loader()
-            real2_batch = self.get_image_from_loader()
+            # real1_batch = self.get_image_from_loader()
+            # real2_batch = self.get_image_from_loader()
+            x_fixed, normal_fixed, mask_fixed, light_fixed = self.get_image_from_loader() # 16 64 64 3
 
-            save_image(real1_batch, os.path.join(root_path, 'test{}_real1.png'.format(step)))
-            save_image(real2_batch, os.path.join(root_path, 'test{}_real2.png'.format(step)))
+            # save_image(real1_batch, os.path.join(root_path, 'test{}_real1.png'.format(step)))
+            # save_image(real2_batch, os.path.join(root_path, 'test{}_real2.png'.format(step)))
+            save_image(x_fixed, os.path.join(self.model_dir, 'test{}_realx.png'.format(step)))
+
+            # self.autoencode(
+            #         real1_batch, self.model_dir, idx=os.path.join(root_path, "test{}_real1".format(step)))
+            # self.autoencode(
+            #         real2_batch, self.model_dir, idx=os.path.join(root_path, "test{}_real2".format(step)))
 
             self.autoencode(
-                    real1_batch, self.model_dir, idx=os.path.join(root_path, "test{}_real1".format(step)))
-            self.autoencode(
-                    real2_batch, self.model_dir, idx=os.path.join(root_path, "test{}_real2".format(step)))
+                    x_fixed, self.model_dir, idx="test{}".format(step))
 
-            self.interpolate_G(real1_batch, step, root_path)
+
+            # self.interpolate_G(real1_batch, step, root_path)
             #self.interpolate_D(real1_batch, real2_batch, step, root_path)
 
-            z_fixed = np.random.uniform(-1, 1, size=(self.batch_size, self.z_num))
-            G_z = self.generate(z_fixed, path=os.path.join(root_path, "test{}_G_z.png".format(step)))
+            # z_fixed = np.random.uniform(-1, 1, size=(self.batch_size, self.z_num))
+            # G_z = self.generate(z_fixed, path=os.path.join(root_path, "test{}_G_z.png".format(step)))
+            self.generate(x_fixed, self.model_dir, idx="test{}".format(step))
 
-            if all_G_z is None:
-                all_G_z = G_z
-            else:
-                all_G_z = np.concatenate([all_G_z, G_z])
-            save_image(all_G_z, '{}/G_z{}.png'.format(root_path, step))
+            # if all_G_z is None:
+            #     all_G_z = G_z
+            # else:
+            #     all_G_z = np.concatenate([all_G_z, G_z])
+            # save_image(all_G_z, '{}/G_z{}.png'.format(root_path, step))
 
-        save_image(all_G_z, '{}/all_G_z.png'.format(root_path), nrow=16)
+        # save_image(all_G_z, '{}/all_G_z.png'.format(root_path), nrow=16)
 
     def get_image_from_loader(self):
         # rgb = self.data_loader.eval(session=self.sess)

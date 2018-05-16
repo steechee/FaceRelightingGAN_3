@@ -164,15 +164,15 @@ def getshading(normal, light):
     nPixel = normal.shape[1]*normal.shape[2] # 64*64 = 4096
     # print (light.shape)
 
-    Lr = light[:,:10] # 16 9
-    Lg = light[:,10:20] # 16 9
-    Lb = light[:,20:] # 16 9
+    # Lr = light[:,:10] # 16 9
+    # Lg = light[:,10:20] # 16 9
+    # Lb = light[:,20:] # 16 9
     # print (Lr.shape)
     # print (Lg.shape)
     # print (Lb.shape)
-    # Lr = light[:,:9] # 16 9
-    # Lg = light[:,9:18] # 16 9
-    # Lb = light[:,18:] # 16 9
+    Lr = light[:,:9] # 16 9
+    Lg = light[:,9:18] # 16 9
+    Lb = light[:,18:] # 16 9
 
     Ns = tf.reshape(normal,[nSample, nPixel, 3]) # 16*4096*3
     N_ext = tf.ones([nSample, nPixel, 1], dtype=tf.float32) # 16*4096*1
@@ -181,20 +181,20 @@ def getshading(normal, light):
     for idx in range(nSample):
         nt = Ns[idx] # 4096*4
 
-        mr = getmatrix(Lr[idx][:9]) # 4 4
-        mg = getmatrix(Lg[idx][:9])
-        mb = getmatrix(Lb[idx][:9])
-        # mr = getmatrix(Lr[idx]) # 4 4
-        # mg = getmatrix(Lg[idx])
-        # mb = getmatrix(Lb[idx])
+        # mr = getmatrix(Lr[idx][:9]) # 4 4
+        # mg = getmatrix(Lg[idx][:9])
+        # mb = getmatrix(Lb[idx][:9])
+        mr = getmatrix(Lr[idx]) # 4 4
+        mg = getmatrix(Lg[idx])
+        mb = getmatrix(Lb[idx])
 
 
-        sr = tf.matmul(nt,mr)*nt*Lr[idx][-1] # 4096*4
-        sg = tf.matmul(nt,mg)*nt*Lg[idx][-1]
-        sb = tf.matmul(nt,mb)*nt*Lb[idx][-1]
-        # sr = tf.matmul(nt,mr)*nt # 4096*4
-        # sg = tf.matmul(nt,mg)*nt
-        # sb = tf.matmul(nt,mb)*nt
+        # sr = tf.matmul(nt,mr)*nt*Lr[idx][-1] # 4096*4
+        # sg = tf.matmul(nt,mg)*nt*Lg[idx][-1]
+        # sb = tf.matmul(nt,mb)*nt*Lb[idx][-1]
+        sr = tf.matmul(nt,mr)*nt # 4096*4
+        sg = tf.matmul(nt,mg)*nt
+        sb = tf.matmul(nt,mb)*nt
 
         s1 = tf.reshape(tf.reduce_sum(sr,axis=-1), [1,64,64]) # should be > 0 but lr_bw[idx,9] constant often < 0
         s2 = tf.reshape(tf.reduce_sum(sg,axis=-1), [1,64,64]) # 1 64 64
@@ -316,6 +316,16 @@ def getmatrixnp(L):
     M.astype(np.float32)
 
     return M
+
+
+def smoothnessloss(input):
+    x_diff = input[:,:-1,:-1,:] - input[:,:-1,1:,:]
+    y_diff = input[:,:-1,:-1,:] - input[:,1:,:-1,:]
+    nelement = tf.cast(tf.size(input),dtype=tf.float32)
+    loss = (tf.reduce_sum(tf.abs(x_diff))+tf.reduce_sum(tf.abs(y_diff)))/nelement
+    return loss
+
+
 
 #
 # def getshading(normal, light):

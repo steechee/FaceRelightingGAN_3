@@ -30,6 +30,6 @@ def get_light_loader(root, batch_size, scale_size, data_format, split=None, is_g
 
     coeff = tf.string_to_number(Lqueue)
     # out = tf.reshape(coeff, [16,30])
-    out = tf.reshape(coeff, [16,27])
+    out = tf.reshape(coeff, [batch_size,27])
 
     return out
