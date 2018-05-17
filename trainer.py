@@ -158,12 +158,23 @@ class Trainer(object):
             if step % self.log_step == 0:
                 fetch_dict.update({
                     "summary": self.summary_op,
-                    "g_loss": self.g_loss,
-                    "d_loss": self.d_loss,
                     "k_t": self.k_t,
+                    "balance": self.balance,
+                    "d_loss": self.d_loss,
                     "d_loss_real": self.d_loss_real,
                     "d_loss_fake": self.d_loss_fake,
-                    "balance": self.balance,
+                    "g_loss": self.g_loss,
+                    "generatorloss": self.generatorloss,
+                    "normalloss": self.normalloss,
+                    "maskloss": self.maskloss,
+                    "albedoloss": self.albedoloss,
+                    "albedosmoothloss": self.albedosmoothloss,
+                    "shadingsmoothloss": self.shadingsmoothloss,
+                    "normalsmoothloss": self.normalsmoothloss,
+                    "lightloss": self.lightloss,
+                    "shadingloss": self.shadingloss,
+                    "reconloss": self.reconloss,
+                    "outloss": self.outloss
                 })
             result = self.sess.run(fetch_dict)
 
@@ -174,15 +185,26 @@ class Trainer(object):
                 self.summary_writer.add_summary(result['summary'], step)
                 self.summary_writer.flush()
 
-                g_loss = result['g_loss']
-                d_loss = result['d_loss']
                 k_t = result['k_t']
+                balance = result['balance']
+                d_loss = result['d_loss']
                 d_loss_real = result['d_loss_real']
                 d_loss_fake = result['d_loss_fake']
-                balance = result['balance']
+                g_loss = result['g_loss']
+                generatorloss = result['generatorloss']
+                normalloss = result['normalloss']
+                maskloss = result['maskloss']
+                albedoloss = result['albedoloss']
+                albedosmoothloss = result['albedosmoothloss']
+                shadingsmoothloss = result['shadingsmoothloss']
+                normalsmoothloss = result['normalsmoothloss']
+                lightloss = result['lightloss']
+                shadingloss = result['shadingloss']
+                reconloss = result['reconloss']
+                outloss = result['outloss']
 
-                print("[{}/{}] Loss_D: {:.6f} Loss_G: {:.6f} measure: {:.4f}, k_t: {:.4f}, d_loss_real: {:.4f}, d_loss_fake: {:.4f}, balance: {:.4f}". \
-                      format(step, self.max_step, d_loss, g_loss, measure, k_t, d_loss_real, d_loss_fake, balance))
+                print("[{}/{}] measure: {:.4f}, k_t: {:.4f}, balance: {:.4f}, Loss_D: {:.6f}, d_loss_real: {:.4f}, d_loss_fake: {:.4f}, Loss_G: {:.6f}, generator: {:.4f}, normal: {:.4f}, normalsmooth: {:.4f}, mask: {:.4f}, albedo: {:.4f}, albedosmooth: {:.4f}, light: {:.4f}, shading: {:.4f}, shadingsmooth: {:.4f}, recon: {:.4f}, out: {:.4f} ". \
+                      format(step, self.max_step, measure, k_t, balance, d_loss, d_loss_real, d_loss_fake, g_loss, generatorloss, normalloss, normalsmoothloss, maskloss, albedoloss, albedosmoothloss, lightloss, shadingloss, shadingsmoothloss, reconloss, outloss ))
 
             if step % (self.log_step * 10) == 0: # every 500 steps
             # if step % (self.log_step) == 0: #
@@ -295,14 +317,17 @@ class Trainer(object):
         self.normalloss = tf.reduce_mean(tf.abs(G - normalgt))
         self.maskloss = tf.reduce_mean(tf.abs(mask - maskgt))
         self.albedoloss = tf.reduce_mean(tf.abs(albedo - albedogt))
-        self.albedosmoothloss = smoothnessloss(self.albedo) # albedo or self.albedo?
+        self.albedosmoothloss = 0.004*smoothnessloss(self.albedo) # albedo or self.albedo?
+        self.shadingsmoothloss = 0.004*smoothnessloss(self.shading) # albedo or self.albedo?
+        self.normalsmoothloss = 0.004*smoothnessloss(self.G) # albedo or self.albedo?
         # self.lightloss = tf.reduce_mean(tf.abs(tf.concat([light[:,:9],light[:,10:19],light[:,20:29]],axis=-1) - self.lightgt))
         self.lightloss = tf.reduce_mean(tf.abs(light - self.lightgt))
         self.shadingloss = tf.reduce_mean(tf.abs(shading - shadinggt))
         self.reconloss = tf.reduce_mean(tf.abs(recon - x))
+        self.outloss = tf.reduce_mean(tf.abs(out - x))
 
         # self.g_loss = tf.reduce_mean(tf.abs(AE_G - G)) + self.normalloss + self.maskloss + self.lightloss + self.reconloss
-        self.g_loss = self.generatorloss + self.normalloss + self.maskloss + self.albedoloss + self.albedosmoothloss + self.lightloss + self.shadingloss + self.reconloss
+        self.g_loss = self.generatorloss + self.normalloss + self.maskloss + self.albedoloss + self.albedosmoothloss + self.lightloss + self.shadingloss + self.reconloss + self.outloss + self.shadingsmoothloss + self.normalsmoothloss
 
         d_optim = d_optimizer.minimize(self.d_loss, var_list=self.D_var)
         g_optim = g_optimizer.minimize(self.g_loss, global_step=self.step, var_list=self.G_var)
@@ -334,9 +359,12 @@ class Trainer(object):
             tf.summary.scalar("loss/maskloss", self.maskloss),
             tf.summary.scalar("loss/albedoloss", self.albedoloss),
             tf.summary.scalar("loss/albedosmoothloss", self.albedosmoothloss),
+            tf.summary.scalar("loss/shadingsmoothloss", self.shadingsmoothloss),
+            tf.summary.scalar("loss/normalsmoothloss", self.normalsmoothloss),
             tf.summary.scalar("loss/lightloss", self.lightloss),
             tf.summary.scalar("loss/shadingloss", self.shadingloss),
             tf.summary.scalar("loss/reconloss", self.reconloss),
+            tf.summary.scalar("loss/outloss", self.outloss),
             tf.summary.scalar("misc/measure", self.measure),
             tf.summary.scalar("misc/k_t", self.k_t),
             tf.summary.scalar("misc/d_lr", self.d_lr),
