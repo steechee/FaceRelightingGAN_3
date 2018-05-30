@@ -17,6 +17,52 @@ def GeneratorCNN(x, output_num, z_num, repeat_num, hidden_num, data_format, reus
         z = x = slim.conv2d(x, 128, 3, 2, activation_fn=tf.nn.elu, data_format=data_format)
         # print x.get_shape() # 16 128 32 32
 
+        ## mask
+        ## more encode
+        # x = slim.conv2d(x, 128, 3, 1, activation_fn=tf.nn.elu, data_format=data_format) # 16 128 32 32
+        # x = slim.conv2d(x, 128, 3, 2, activation_fn=tf.nn.elu, data_format=data_format) # 16 128 16 16
+
+        z_m = z
+        z_m = tf.reshape(z_m, [-1, np.prod([32, 32, 128])]) # 16 32768
+        z_m = slim.fully_connected(z_m, 64, activation_fn=None) # 16 64
+
+        ## decode mask
+        num_output = int(np.prod([32, 32, 128]))
+        x_m = slim.fully_connected(z_m, num_output, activation_fn=None) # 16 32768
+        x_m = reshape(x_m, 32, 32, 128, data_format) # 16 128 16 16
+
+        # x_m = slim.conv2d(x_m, 128, 3, 1, activation_fn=tf.nn.elu, data_format=data_format) # 16 128 16 16
+        x_m = slim.conv2d(x_m, 128, 3, 1, activation_fn=tf.nn.elu, data_format=data_format) # 16 128 16 16
+        # x_m = upscale(x_m, 2, data_format) # 16 128 32 32
+        x_m = slim.conv2d(x_m, 128, 3, 1, activation_fn=tf.nn.elu, data_format=data_format) # 16 128 32 32
+        x_m = upscale(x_m, 2, data_format) # 16 128 64 64
+        x_m = slim.conv2d(x_m, 128, 3, 1, activation_fn=tf.nn.elu, data_format=data_format) # 16 128 64 64
+        maskout = slim.conv2d(x_m, 3, 3, 1, activation_fn=tf.nn.elu, data_format=data_format) # 16 3 64 64
+
+
+        # ## more encode
+        # x = slim.conv2d(x, 128, 3, 1, activation_fn=tf.nn.elu, data_format=data_format) # 16 128 32 32
+        # x = slim.conv2d(x, 128, 3, 2, activation_fn=tf.nn.elu, data_format=data_format) # 16 128 16 16
+        #
+        # z_m = x
+        # z_m = tf.reshape(z_m, [-1, np.prod([16, 16, 128])]) # 16 32768
+        # z_m = slim.fully_connected(z_m, 64, activation_fn=None) # 16 64
+        #
+        # ## decode mask
+        # num_output = int(np.prod([16,16,128]))
+        # x_m = slim.fully_connected(z_m, num_output, activation_fn=None) # 16 32768
+        # x_m = reshape(x_m, 16, 16, 128, data_format) # 16 128 16 16
+        #
+        # x_m = slim.conv2d(x_m, 128, 3, 1, activation_fn=tf.nn.elu, data_format=data_format) # 16 128 16 16
+        # x_m = slim.conv2d(x_m, 128, 3, 1, activation_fn=tf.nn.elu, data_format=data_format) # 16 128 16 16
+        # x_m = upscale(x_m, 2, data_format) # 16 128 32 32
+        # x_m = slim.conv2d(x_m, 128, 3, 1, activation_fn=tf.nn.elu, data_format=data_format) # 16 128 32 32
+        # x_m = upscale(x_m, 2, data_format) # 16 128 64 64
+        # x_m = slim.conv2d(x_m, 128, 3, 1, activation_fn=tf.nn.elu, data_format=data_format) # 16 128 64 64
+        # maskout = slim.conv2d(x_m, 3, 3, 1, activation_fn=tf.nn.elu, data_format=data_format) # 16 3 64 64
+
+
+
         ## normal residual_block
         z_n = z
         z_n = tf.transpose(z_n, [0, 2, 3, 1])
@@ -85,7 +131,7 @@ def GeneratorCNN(x, output_num, z_num, repeat_num, hidden_num, data_format, reus
         # print x_l.get_shape() # 16 128
         lightout = slim.fully_connected(x_l, 27, activation_fn=None)
         # print lightout.get_shape() # 16 27
-
+        # print lightout.dtype # float32
 
 
         ## reconstruction
@@ -94,13 +140,22 @@ def GeneratorCNN(x, output_num, z_num, repeat_num, hidden_num, data_format, reus
 
         recon = shading*albedoout
 
-        ##
+        ## relighting
+        # relight = np.random.normal(0, 1, size=(16, 27))
+        # relight = tf.random_normal([16, 27], mean=0.0, stddev=1.0, dtype=tf.float32)
+        relight = tf.cast(tf.reshape(tf.tile(tf.constant([0,1,0,0,0,0,0,0,0]),[48]),[16,27]),dtype=tf.float32)
+
+        # relight = tf.random_shuffle(relight)
+        # relight = lightout
+        # print relight.get_shape() # 16 27
+        reshading = getshading(normalout,relight)
+        recon2 = reshading*albedoout
 
         # out = recon * maskout - maskout * bggt
 
     variables = tf.contrib.framework.get_variables(vs)
-    # return normalout, maskout, albedoout, lightout, shading, recon, variables
-    return normalout, albedoout, lightout, shading, recon, variables
+    return normalout, maskout, albedoout, lightout, shading, recon, relight, reshading, recon2, variables
+    # return normalout, albedoout, lightout, shading, recon, variables
 
 def DiscriminatorCNN(x, input_channel, z_num, repeat_num, hidden_num, data_format):
     with tf.variable_scope("D") as vs:
