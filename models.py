@@ -143,18 +143,19 @@ def GeneratorCNN(x, output_num, z_num, repeat_num, hidden_num, data_format, reus
         ## relighting
         # relight = np.random.normal(0, 1, size=(16, 27))
         # relight = tf.random_normal([16, 27], mean=0.0, stddev=1.0, dtype=tf.float32)
-        relight = tf.cast(tf.reshape(tf.tile(tf.constant([0,1,0,0,0,0,0,0,0]),[48]),[16,27]),dtype=tf.float32)
+        light2 = tf.cast(tf.reshape(tf.tile(tf.constant([1,1,1,1,1,1,1,1,1]),[48]),[16,27]),dtype=tf.float32)
 
         # relight = tf.random_shuffle(relight)
         # relight = lightout
         # print relight.get_shape() # 16 27
-        reshading = getshading(normalout,relight)
-        recon2 = reshading*albedoout
+        shading2 = getshading(normalout,light2)
+        recon2 = shading2*albedoout
 
         # out = recon * maskout - maskout * bggt
 
     variables = tf.contrib.framework.get_variables(vs)
-    return normalout, maskout, albedoout, lightout, shading, recon, relight, reshading, recon2, variables
+    return albedoout, normalout, maskout, lightout, shading, recon, light2, shading2, recon2, variables
+    # return normalout, maskout, albedoout, lightout, shading, recon, relight, reshading, recon2, variables
     # return normalout, albedoout, lightout, shading, recon, variables
 
 def DiscriminatorCNN(x, input_channel, z_num, repeat_num, hidden_num, data_format):
