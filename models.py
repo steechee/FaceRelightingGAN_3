@@ -37,8 +37,8 @@ def GeneratorCNN(x, output_num, z_num, repeat_num, hidden_num, data_format, reus
         x_m = slim.conv2d(x_m, 128, 3, 1, activation_fn=tf.nn.elu, data_format=data_format) # 16 128 32 32
         x_m = upscale(x_m, 2, data_format) # 16 128 64 64
         x_m = slim.conv2d(x_m, 128, 3, 1, activation_fn=tf.nn.elu, data_format=data_format) # 16 128 64 64
-        maskout = slim.conv2d(x_m, 3, 3, 1, activation_fn=tf.nn.elu, data_format=data_format) # 16 3 64 64
-
+        x_m = slim.conv2d(x_m, 1, 3, 1, activation_fn=tf.nn.elu, data_format=data_format) # 16 3 64 64
+        maskout = tf.concat([x_m, x_m, x_m], 1)
 
         # ## more encode
         # x = slim.conv2d(x, 128, 3, 1, activation_fn=tf.nn.elu, data_format=data_format) # 16 128 32 32

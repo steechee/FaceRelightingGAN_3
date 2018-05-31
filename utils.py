@@ -325,6 +325,43 @@ def smoothnessloss(input):
     loss = (tf.reduce_sum(tf.abs(x_diff))+tf.reduce_sum(tf.abs(y_diff)))/nelement
     return loss
 
+def bwsloss(input, mask):
+
+    input_mask = input * mask # 16 3 64 64
+    # mask_single_channel = mask[:,0,:,:] # 16 1 64 64
+    # N = tf.shape(mask, out_type=tf.float32)
+
+    # m = np.prod([N[0],N[2],N[3]])
+
+    # m = np.prod([mask.shape[0],mask.shape[2],mask.shape[3]], dtype=tf.float32)
+    # print (m.dtype)
+    # m = tf.reduce_sum(mask_single_channel) + 1e-6 # # pixel in mask
+
+    # avg_r = tf.reduce_sum(input_mask[:,0,:,:])/m
+    # avg_g = tf.reduce_sum(input_mask[:,1,:,:])/m
+    # avg_b = tf.reduce_sum(input_mask[:,2,:,:])/m
+
+    avg = tf.reduce_mean(input_mask, [0,2,3])
+    avgin = tf.reduce_mean(input, [0,2,3])
+    avgmask = tf.reduce_mean(mask, [0,2,3])
+    # avg_r = tf.reduce_mean(input_mask[:,0,:,:])
+    # avg_g = tf.reduce_mean(input_mask[:,1,:,:])
+    # avg_b = tf.reduce_mean(input_mask[:,2,:,:])
+
+    realavg = tf.reduce_mean(avg)
+
+    loss_r = 0.5*((avg[0] - realavg)**2)
+    loss_g = 0.5*((avg[1] - realavg)**2)
+    loss_b = 0.5*((avg[2] - realavg)**2)
+
+    # loss_r = 0.5*((avg_r - 0.75)**2)
+    # loss_g = 0.5*((avg_g - 0.75)**2)
+    # loss_b = 0.5*((avg_b - 0.75)**2)
+
+    loss = loss_r + loss_g + loss_b
+
+    return loss, avg, avgin, avgmask
+
 
 
 #
