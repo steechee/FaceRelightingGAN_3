@@ -20,6 +20,7 @@ from utils import getshading
 from utils import getshadingnp
 from utils import smoothnessloss
 from utils import bwsloss
+import datetime
 
 def next(loader):
     return loader.next()[0].data.numpy()
@@ -567,9 +568,16 @@ class Trainer(object):
             # real2_batch = self.get_image_from_loader()
             x_fixed, normal_fixed, mask_fixed, light_fixed = self.get_image_from_loader() # 16 64 64 3
 
+            print (x_fixed.shape)
+            now = datetime.datetime.now()
+            result_dir = os.path.join(self.model_dir,'test_result/%s'%(now.strftime('%m%d')))
+
+            if not os.path.exists(result_dir):
+                os.makedirs(result_dir)
+
             # save_image(real1_batch, os.path.join(root_path, 'test{}_real1.png'.format(step)))
             # save_image(real2_batch, os.path.join(root_path, 'test{}_real2.png'.format(step)))
-            save_image(x_fixed, os.path.join(self.model_dir, 'test{}_realx.png'.format(step)))
+            save_image(x_fixed, os.path.join(result_dir, 'test{}_input.png'.format(step)))
 
             # self.autoencode(
             #         real1_batch, self.model_dir, idx=os.path.join(root_path, "test{}_real1".format(step)))
@@ -577,7 +585,7 @@ class Trainer(object):
             #         real2_batch, self.model_dir, idx=os.path.join(root_path, "test{}_real2".format(step)))
 
             self.autoencode(
-                    x_fixed, self.model_dir, idx="test{}".format(step))
+                    x_fixed, result_dir, idx="test{}".format(step))
 
 
             # self.interpolate_G(real1_batch, step, root_path)
@@ -585,7 +593,7 @@ class Trainer(object):
 
             # z_fixed = np.random.uniform(-1, 1, size=(self.batch_size, self.z_num))
             # G_z = self.generate(z_fixed, path=os.path.join(root_path, "test{}_G_z.png".format(step)))
-            self.generate(x_fixed, self.model_dir, idx="test{}".format(step))
+            self.generate(x_fixed, result_dir, idx="test{}".format(step))
 
             # if all_G_z is None:
             #     all_G_z = G_z
