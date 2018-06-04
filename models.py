@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 slim = tf.contrib.slim
 from utils import getmatrix
-from utils import getshading
+from utils import getshading10
 from hyper_parameters import *
 
 def GeneratorCNN(x, output_num, z_num, repeat_num, hidden_num, data_format, reuse):
@@ -129,26 +129,27 @@ def GeneratorCNN(x, output_num, z_num, repeat_num, hidden_num, data_format, reus
         # print x_l.get_shape() # 16 128 1 1
         x_l = tf.reshape(x_l, [16, 128])
         # print x_l.get_shape() # 16 128
-        lightout = slim.fully_connected(x_l, 27, activation_fn=None)
+        lightout = slim.fully_connected(x_l, 30, activation_fn=None)
         # print lightout.get_shape() # 16 27
         # print lightout.dtype # float32
 
 
         ## reconstruction
 
-        shading = getshading(normalout,lightout) # 16 3 64 64
+        shading = getshading10(normalout,lightout) # 16 3 64 64
 
         recon = shading*albedoout
 
         ## relighting
         # relight = np.random.normal(0, 1, size=(16, 27))
         # relight = tf.random_normal([16, 27], mean=0.0, stddev=1.0, dtype=tf.float32)
-        light2 = tf.cast(tf.reshape(tf.tile(tf.constant([1,1,1,1,1,1,1,1,1]),[48]),[16,27]),dtype=tf.float32)
+        # light2 = tf.cast(tf.reshape(tf.tile(tf.constant([1,1,1,1,1,1,1,1,1]),[48]),[16,27]),dtype=tf.float32)
 
         # relight = tf.random_shuffle(relight)
-        # relight = lightout
+        # light2 = tf.random_shuffle(lightout)
+        light2 = lightout
         # print relight.get_shape() # 16 27
-        shading2 = getshading(normalout,light2)
+        shading2 = getshading10(normalout,light2)
         recon2 = shading2*albedoout
 
         # out = recon * maskout - maskout * bggt

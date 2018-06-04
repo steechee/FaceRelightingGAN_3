@@ -212,6 +212,71 @@ def getshading(normal, light):
 
     return shading
 
+def getshading10(normal, light):
+    # normal 16*3*64*64
+    # light 100*10*3
+
+    # print (normal.shape) 16 3 64 64
+    # print (light.shape) 16 27
+
+    normal = tf.transpose(normal,[0, 2, 3, 1]) # 16 64 64 3
+
+    nSample = normal.shape[0] # batch_size 16
+    nPixel = normal.shape[1]*normal.shape[2] # 64*64 = 4096
+    # print (light.shape)
+
+    # Lr = light[:,:10] # 16 9
+    # Lg = light[:,10:20] # 16 9
+    # Lb = light[:,20:] # 16 9
+    # print (Lr.shape)
+    # print (Lg.shape)
+    # print (Lb.shape)
+    Lr = light[:,:9] # 16 9
+    Wr = light[:,9]
+    Lg = light[:,10:19] # 16 9
+    Wg = light[:,19]
+    Lb = light[:,20:29] # 16 9
+    Wb = light[:,29]
+
+    Ns = tf.reshape(normal,[nSample, nPixel, 3]) # 16*4096*3
+    N_ext = tf.ones([nSample, nPixel, 1], dtype=tf.float32) # 16*4096*1
+    Ns = tf.concat([Ns, N_ext], axis=-1) # 16*4096*4
+
+    for idx in range(nSample):
+        nt = Ns[idx] # 4096*4
+
+        # mr = getmatrix(Lr[idx][:9]) # 4 4
+        # mg = getmatrix(Lg[idx][:9])
+        # mb = getmatrix(Lb[idx][:9])
+        mr = getmatrix(Lr[idx]) # 4 4
+        mg = getmatrix(Lg[idx])
+        mb = getmatrix(Lb[idx])
+
+
+        # sr = tf.matmul(nt,mr)*nt*Lr[idx][-1] # 4096*4
+        # sg = tf.matmul(nt,mg)*nt*Lg[idx][-1]
+        # sb = tf.matmul(nt,mb)*nt*Lb[idx][-1]
+        sr = tf.matmul(nt,mr)*nt # 4096*4
+        sg = tf.matmul(nt,mg)*nt
+        sb = tf.matmul(nt,mb)*nt
+
+        s1 = tf.reshape(tf.reduce_sum(sr,axis=-1)*Wr[idx], [1,64,64]) # should be > 0 but lr_bw[idx,9] constant often < 0
+        s2 = tf.reshape(tf.reduce_sum(sg,axis=-1)*Wg[idx], [1,64,64]) # 1 64 64
+        s3 = tf.reshape(tf.reduce_sum(sb,axis=-1)*Wb[idx], [1,64,64])
+
+        s = tf.stack([s1,s2,s3],axis=3) # 1 64 64 3
+
+        if idx == 0:
+            shading = s
+        else:
+            shading = tf.concat([shading,s],axis=0) # 16 64 64 3
+
+    shading = tf.transpose(shading, [0, 3, 1, 2]) # 16 3 64 64
+
+    # shading = 1.5*shading
+
+    return shading
+
 
 def getshadingnp(normal, light):
     # normal 16*3*64*64
@@ -253,6 +318,61 @@ def getshadingnp(normal, light):
         s1 = np.reshape(np.sum(sr,axis=-1), [1,64,64]) # should be > 0 but lr_bw[idx,9] constant often < 0
         s2 = np.reshape(np.sum(sg,axis=-1), [1,64,64]) # 1 64 64
         s3 = np.reshape(np.sum(sb,axis=-1), [1,64,64])
+
+        s = np.stack([s1,s2,s3],axis=3) # 1 64 64 3
+
+        if idx == 0:
+            shading = s
+        else:
+            shading = np.concatenate([shading,s],axis=0) # 16 64 64 3
+
+    shading = np.transpose(shading, [0, 3, 1, 2]) # 16 3 64 64
+    shading.astype(np.float32)
+    return shading
+
+def getshadingnp10(normal, light):
+    # normal 16*3*64*64
+    # light 100*10*3
+
+    # print (normal.shape) 16 3 64 64
+    # print (light.shape) 16 27
+
+    normal = np.transpose(normal,[0, 2, 3, 1]) # 16 64 64 3
+
+    nSample = normal.shape[0] # batch_size 16
+    nPixel = normal.shape[1]*normal.shape[2] # 64*64 = 4096
+
+
+    # Lr = light[:,:9] # 16 9
+    # Lg = light[:,10:19] # 16 9
+    # Lb = light[:,20:29] # 16 9
+
+    Lr = light[:,:9] # 16 9
+    Wr = light[:,9]
+    Lg = light[:,10:19] # 16 9
+    Wg = light[:,19]
+    Lb = light[:,19:29] # 16 9
+    Wb = light[:,29]
+
+
+    Ns = np.reshape(normal,[nSample, nPixel, 3]) # 16*4096*3
+    N_ext = np.ones([nSample, nPixel, 1], dtype=np.float32) # 16*4096*1
+    Ns = np.concatenate([Ns, N_ext], axis=-1) # 16*4096*4
+
+    for idx in range(nSample):
+        nt = Ns[idx] # 4096*4
+
+        mr = getmatrixnp(Lr[idx]) # 4 4
+        mg = getmatrixnp(Lg[idx])
+        mb = getmatrixnp(Lb[idx])
+
+        sr = np.matmul(nt,mr)*nt # 4096*4
+        sg = np.matmul(nt,mg)*nt
+        sb = np.matmul(nt,mb)*nt
+
+        s1 = np.reshape(np.sum(sr,axis=-1)*Wr[idx], [1,64,64]) # should be > 0 but lr_bw[idx,9] constant often < 0
+        s2 = np.reshape(np.sum(sg,axis=-1)*Wg[idx], [1,64,64]) # 1 64 64
+        s3 = np.reshape(np.sum(sb,axis=-1)*Wb[idx], [1,64,64])
 
         s = np.stack([s1,s2,s3],axis=3) # 1 64 64 3
 
