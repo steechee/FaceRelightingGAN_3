@@ -169,8 +169,8 @@ class Trainer(object):
                     "generatorloss": self.generatorloss,
                     "normalloss": self.normalloss,
                     "maskloss": self.maskloss,
-                    "albedoloss": self.albedoloss,
-                    # "albedosmoothloss": self.albedosmoothloss,
+                    # "albedoloss": self.albedoloss,
+                    "albedosmoothloss": self.albedosmoothloss,
                     "shadingsmoothloss": self.shadingsmoothloss,
                     "shadingbwsloss": self.shadingbwsloss,
                     # "normalsmoothloss": self.normalsmoothloss,
@@ -198,26 +198,26 @@ class Trainer(object):
                 # renderingloss = result['renderingloss']
                 generatorloss = result['generatorloss']
                 normalloss = result['normalloss']
-                albedoloss = result['albedoloss']
+                # albedoloss = result['albedoloss']
                 unitnormloss = result['unitnormloss']
                 lightloss = result['lightloss']
                 # shadingloss = result['shadingloss']
                 reconloss = result['reconloss']
                 shadingsmoothloss = result['shadingsmoothloss']
                 shadingbwsloss = result['shadingbwsloss']
-                # albedosmoothloss = result['albedosmoothloss']
+                albedosmoothloss = result['albedosmoothloss']
                 # normalsmoothloss = result['normalsmoothloss']
                 maskloss = result['maskloss']
                 # outloss = result['outloss']
 
 
-                print("[{}/{}] measure: {:.4f}, k_t: {:.4f}, balance: {:.4f}, Loss_D: {:.6f}, d_loss_real: {:.4f}, d_loss_fake: {:.4f}, Loss_G: {:.6f}, generator: {:.4f}, albedo: {:.4f}, normal: {:.4f}, unitnorm: {:.4f}, light: {:.4f}, shadingsmooth: {:.4f}, shadingbws: {:.4f}, mask: {:.4f}, recon: {:.4f}". \
-                      format(step, self.max_step, measure, k_t, balance, d_loss, d_loss_real, d_loss_fake, g_loss, generatorloss, albedoloss, normalloss, unitnormloss, lightloss, shadingsmoothloss, shadingbwsloss, maskloss, reconloss))
+                print("[{}/{}] measure: {:.4f}, k_t: {:.4f}, balance: {:.4f}, Loss_D: {:.6f}, d_loss_real: {:.4f}, d_loss_fake: {:.4f}, Loss_G: {:.6f}, generator: {:.4f}, albedosmooth: {:.4f}, normal: {:.4f}, unitnorm: {:.4f}, light: {:.4f}, shadingsmooth: {:.4f}, shadingbws: {:.4f}, mask: {:.4f}, recon: {:.4f}". \
+                      format(step, self.max_step, measure, k_t, balance, d_loss, d_loss_real, d_loss_fake, g_loss, generatorloss, albedosmoothloss, normalloss, unitnormloss, lightloss, shadingsmoothloss, shadingbwsloss, maskloss, reconloss))
                 # print("[{}/{}] measure: {:.4f}, k_t: {:.4f}, balance: {:.4f}, Loss_D: {:.6f}, d_loss_real: {:.4f}, d_loss_fake: {:.4f}, Loss_G: {:.6f}, redering: {:.4f},  generator: {:.4f}, albedo: {:.4f}, normal: {:.4f}, unitnorm: {:.4f}, light: {:.4f}, shading: {:.4f}, recon: {:.4f}". \
                 #     format(step, self.max_step, measure, k_t, balance, d_loss, d_loss_real, d_loss_fake, g_loss, renderingloss, generatorloss, albedoloss, normalloss, unitnormloss, lightloss, shadingloss, reconloss))
 
-            # if step % (self.log_step * 10) == 0: # every 500 steps
-            if step % (self.log_step) == 0: #
+            if step % (self.log_step * 10) == 0: # every 500 steps
+            # if step % (self.log_step) == 0: #
                 self.generate(x_fixed, self.model_dir, idx=step)
                 self.autoencode(x_fixed, self.model_dir, idx=step)
 
@@ -336,9 +336,9 @@ class Trainer(object):
         # self.renderingloss = tf.reduce_mean(tf.abs(AE_recon2 - recon2))
 
         # albedo #
-        self.albedoloss = 0.2*tf.reduce_mean(tf.abs(albedo*tf.transpose(self.mask/255.,[0,3,1,2]) - albedogt*tf.transpose(self.mask/255.,[0,3,1,2]))) # 16 3 64 64
+        # self.albedoloss = 0.2*tf.reduce_mean(tf.abs(albedo*tf.transpose(self.mask/255.,[0,3,1,2]) - albedogt*tf.transpose(self.mask/255.,[0,3,1,2]))) # 16 3 64 64
         # self.albedoloss = tf.reduce_mean(tf.abs(albedo - albedogt))
-        # self.albedosmoothloss = 0.004*smoothnessloss(self.albedo) # albedo or self.albedo?
+        self.albedosmoothloss = smoothnessloss(albedo*tf.transpose(self.mask/255.,[0,3,1,2])) # albedo or self.albedo?
 
         # normal: assume both gt and estimated normal are normalized to unit norm
         self.normalloss = tf.losses.cosine_distance(normal*tf.transpose(self.mask/255.,[0,3,1,2]), normalgt*tf.transpose(self.mask/255.,[0,3,1,2]), dim=1) # 16 3 64 64
@@ -352,18 +352,18 @@ class Trainer(object):
 
         # shading
         # self.shadingloss = tf.reduce_mean(tf.abs(shading - shadinggt))
-        self.shadingsmoothloss = 0.004*smoothnessloss(shading*tf.transpose(self.mask/255.,[0,3,1,2])) # 16 3 64 64 # shading or self.shading
+        self.shadingsmoothloss = smoothnessloss(shading*tf.transpose(self.mask/255.,[0,3,1,2])) # 16 3 64 64 # shading or self.shading
         self.shadingbwsloss, self.avg_r, self.avg_g, self.avg_b = bwsloss(shading,tf.transpose(self.mask/255.,[0,3,1,2]))
 
         # recon
         self.reconloss = tf.reduce_mean(tf.abs(recon*tf.transpose(self.mask/255.,[0,3,1,2]) - x*tf.transpose(self.mask/255.,[0,3,1,2]))) # 16 3 64 64
 
         # mask
-        self.maskloss = tf.reduce_mean(tf.abs(mask - maskgt))
+        self.maskloss = 0.00001*tf.reduce_sum(tf.abs(mask - maskgt))
 
         # self.outloss = tf.reduce_mean(tf.abs(out - x))
 
-        self.g_loss = self.generatorloss + self.albedoloss + self.normalloss + self.unitnormloss + self.lightloss + self.shadingsmoothloss + self.shadingbwsloss + self.reconloss + self.maskloss
+        self.g_loss = self.generatorloss + self.albedosmoothloss + self.normalloss + self.unitnormloss + self.lightloss + self.shadingsmoothloss + self.shadingbwsloss + self.reconloss + self.maskloss
         # self.g_loss = self.renderingloss + self.generatorloss + self.albedoloss + self.normalloss + self.unitnormloss + self.lightloss + self.shadingloss + self.reconloss
 
 
@@ -397,9 +397,9 @@ class Trainer(object):
             # tf.summary.scalar("loss/renderingloss", self.renderingloss),
             tf.summary.scalar("loss/generatorloss", self.generatorloss),
             tf.summary.scalar("loss/normalloss", self.normalloss),
-            tf.summary.scalar("loss/albedoloss", self.albedoloss),
+            # tf.summary.scalar("loss/albedoloss", self.albedoloss),
             tf.summary.scalar("loss/maskloss", self.maskloss),
-            # tf.summary.scalar("loss/albedosmoothloss", self.albedosmoothloss),
+            tf.summary.scalar("loss/albedosmoothloss", self.albedosmoothloss),
             tf.summary.scalar("loss/shadingsmoothloss", self.shadingsmoothloss),
             tf.summary.scalar("loss/shadingbwsloss", self.shadingbwsloss),
             # tf.summary.scalar("loss/normalsmoothloss", self.normalsmoothloss),

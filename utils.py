@@ -7,7 +7,6 @@ import logging
 import numpy as np
 from PIL import Image
 from datetime import datetime
-
 import tensorflow as tf
 
 def prepare_dirs_and_logger(config):
@@ -208,6 +207,8 @@ def getshading(normal, light):
             shading = tf.concat([shading,s],axis=0) # 16 64 64 3
 
     shading = tf.transpose(shading, [0, 3, 1, 2]) # 16 3 64 64
+
+    # shading = 1.5*shading
 
     return shading
 
