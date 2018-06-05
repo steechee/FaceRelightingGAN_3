@@ -238,6 +238,10 @@ def getshading10(normal, light):
     Lb = light[:,20:29] # 16 9
     Wb = light[:,29]
 
+    Wr = tf.clip_by_value(Wr, 1.3, 1.7)
+    Wg = tf.clip_by_value(Wg, 1.3, 1.7)
+    Wb = tf.clip_by_value(Wb, 1.3, 1.7)
+
     Ns = tf.reshape(normal,[nSample, nPixel, 3]) # 16*4096*3
     N_ext = tf.ones([nSample, nPixel, 1], dtype=tf.float32) # 16*4096*1
     Ns = tf.concat([Ns, N_ext], axis=-1) # 16*4096*4

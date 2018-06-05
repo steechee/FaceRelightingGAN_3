@@ -259,7 +259,7 @@ class Trainer(object):
         self.k_t = tf.Variable(0., trainable=False, name='k_t')
 
         ## encoder, resblock and decoder consist generatorCNN
-        albedo, normal, mask, light, shading, recon, light2, shading2, recon2, self.G_var = GeneratorCNN(
+        albedo, normal, mask, self.light, shading, recon, light2, shading2, recon2, self.G_var = GeneratorCNN(
                 self.x, self.channel, self.z_num, self.repeat_num,
                 self.conv_hidden_num, self.data_format, reuse=False)
         # print (albedo.get_shape()) #16 3 64 64
@@ -351,7 +351,7 @@ class Trainer(object):
 
         # light
 
-        light9 = tf.concat([light[:,:9], light[:,10:19], light[:,20:29]], 1)
+        light9 = tf.concat([self.light[:,:9], self.light[:,10:19], self.light[:,20:29]], 1)
         # print (light[:,:9].get_shape())
         # print (light9.get_shape())
         self.lightloss = tf.reduce_mean(tf.abs(light9 - self.lightgt)) # 16 27
@@ -443,7 +443,7 @@ class Trainer(object):
     def generate(self, inputs, path, idx=None):
         inputs = inputs.transpose([0, 3, 1, 2])
 
-        normal, mask, shading, albedo, recon, shading2, recon2, avgr, avgg, avgb = self.sess.run([self.normal, self.mask, self.shading, self.albedo, self.recon, self.shading2, self.recon2, self.avg_r, self.avg_g, self.avg_b], {self.x: inputs})
+        lightgt, light, normal, mask, shading, albedo, recon, shading2, recon2, avgr, avgg, avgb = self.sess.run([self.lightgt, self.light, self.normal, self.mask, self.shading, self.albedo, self.recon, self.shading2, self.recon2, self.avg_r, self.avg_g, self.avg_b], {self.x: inputs})
 
 
         mask_path = os.path.join(path, '{}_M.png'.format(idx))
@@ -478,6 +478,13 @@ class Trainer(object):
         recon2_path = os.path.join(path, '{}_R2.png'.format(idx))
         save_image(recon*mask/255., recon2_path)
 
+        # light coefficient print and save as txt
+        lightgt_path = os.path.join(path, '{}_lightgt.txt'.format(idx))
+        light_path = os.path.join(path, '{}_light.txt'.format(idx))
+        np.savetxt(lightgt_path, lightgt)
+        np.savetxt(light_path, light)
+
+
         print (avgr)
         print (avgg)
         print (avgb)
@@ -503,6 +510,11 @@ class Trainer(object):
         save_image(AE_x, AE_x_path)
         print("[*] Samples saved: {}".format(AE_x_path))
 
+        AE_x2_path = os.path.join(path, '{}_D_real2.png'.format(idx))
+        save_image(AE_x*mask/255., AE_x2_path)
+        print("[*] Samples saved: {}".format(AE_x2_path))
+
+
         AE_recon_path = os.path.join(path, '{}_D_recon.png'.format(idx))
         save_image(AE_recon, AE_recon_path)
         print("[*] Samples saved: {}".format(AE_recon_path))
@@ -510,6 +522,7 @@ class Trainer(object):
         AE_recon2_path = os.path.join(path, '{}_D_recon2.png'.format(idx))
         save_image(AE_recon*mask/255., AE_recon2_path)
         print("[*] Samples saved: {}".format(AE_recon2_path))
+
 
         # AE_recon2_path = os.path.join(path, '{}_D_recon2.png'.format(idx))
         # save_image(AE_recon2, AE_recon2_path)
@@ -575,9 +588,12 @@ class Trainer(object):
             # real2_batch = self.get_image_from_loader()
             x_fixed, normal_fixed, mask_fixed, light_fixed = self.get_image_from_loader() # 16 64 64 3
 
-            print (x_fixed.shape)
+
+            print (self.model_dir)
+            # print (x_fixed.shape) # 16 64 64 3
             now = datetime.datetime.now()
-            result_dir = os.path.join(self.model_dir,'test_result/%s'%(now.strftime('%m%d')))
+            # result_dir = os.path.join(self.model_dir,'_testresult/%s'%(now.strftime('%m%d_%H%M')))
+            result_dir = self.model_dir + '_testresult/%s'%(now.strftime('%m%d_%H%M'))
 
             if not os.path.exists(result_dir):
                 os.makedirs(result_dir)
