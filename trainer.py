@@ -22,6 +22,7 @@ from utils import getshading
 from utils import getshadingnp
 from utils import smoothnessloss
 from utils import bwsloss
+# from utils import shadingweightloss
 import datetime
 
 def next(loader):
@@ -178,6 +179,7 @@ class Trainer(object):
                     # "normalsmoothloss": self.normalsmoothloss,
                     "unitnormloss": self.unitnormloss,
                     "lightloss": self.lightloss,
+                    "weightloss": self.weightloss,
                     # "shadingloss": self.shadingloss,
                     "reconloss": self.reconloss,
                     # "outloss": self.outloss
@@ -203,6 +205,7 @@ class Trainer(object):
                 albedoloss = result['albedoloss']
                 unitnormloss = result['unitnormloss']
                 lightloss = result['lightloss']
+                weightloss = result['weightloss']
                 # shadingloss = result['shadingloss']
                 reconloss = result['reconloss']
                 shadingsmoothloss = result['shadingsmoothloss']
@@ -213,8 +216,8 @@ class Trainer(object):
                 # outloss = result['outloss']
 
 
-                print("[{}/{}] measure: {:.4f}, k_t: {:.4f}, balance: {:.4f}, Loss_D: {:.6f}, d_loss_real: {:.4f}, d_loss_fake: {:.4f}, Loss_G: {:.6f}, generator: {:.4f}, albedo: {:.4f}, normal: {:.4f}, unitnorm: {:.4f}, light: {:.4f}, shadingsmooth: {:.4f}, shadingbws: {:.4f}, mask: {:.4f}, recon: {:.4f}". \
-                      format(step, self.max_step, measure, k_t, balance, d_loss, d_loss_real, d_loss_fake, g_loss, generatorloss, albedoloss, normalloss, unitnormloss, lightloss, shadingsmoothloss, shadingbwsloss, maskloss, reconloss))
+                print("[{}/{}] measure: {:.4f}, k_t: {:.4f}, balance: {:.4f}, Loss_D: {:.6f}, d_loss_real: {:.4f}, d_loss_fake: {:.4f}, Loss_G: {:.6f}, generator: {:.4f}, albedo: {:.4f}, normal: {:.4f}, unitnorm: {:.4f}, light: {:.4f},  weight: {:.4f}, shadingsmooth: {:.4f}, shadingbws: {:.4f}, mask: {:.4f}, recon: {:.4f}". \
+                      format(step, self.max_step, measure, k_t, balance, d_loss, d_loss_real, d_loss_fake, g_loss, generatorloss, albedoloss, normalloss, unitnormloss, lightloss, weightloss, shadingsmoothloss, shadingbwsloss, maskloss, reconloss))
                 # print("[{}/{}] measure: {:.4f}, k_t: {:.4f}, balance: {:.4f}, Loss_D: {:.6f}, d_loss_real: {:.4f}, d_loss_fake: {:.4f}, Loss_G: {:.6f}, redering: {:.4f},  generator: {:.4f}, albedo: {:.4f}, normal: {:.4f}, unitnorm: {:.4f}, light: {:.4f}, shading: {:.4f}, recon: {:.4f}". \
                 #     format(step, self.max_step, measure, k_t, balance, d_loss, d_loss_real, d_loss_fake, g_loss, renderingloss, generatorloss, albedoloss, normalloss, unitnormloss, lightloss, shadingloss, reconloss))
 
@@ -259,7 +262,7 @@ class Trainer(object):
         self.k_t = tf.Variable(0., trainable=False, name='k_t')
 
         ## encoder, resblock and decoder consist generatorCNN
-        albedo, normal, mask, self.light, shading, recon, light2, shading2, recon2, self.G_var = GeneratorCNN(
+        albedo, normal, mask, self.light, self.shadingweight, shading, recon, light2, shading2, recon2, self.G_var = GeneratorCNN(
                 self.x, self.channel, self.z_num, self.repeat_num,
                 self.conv_hidden_num, self.data_format, reuse=False)
         # print (albedo.get_shape()) #16 3 64 64
@@ -351,10 +354,13 @@ class Trainer(object):
 
         # light
 
-        light9 = tf.concat([self.light[:,:9], self.light[:,10:19], self.light[:,20:29]], 1)
+        # light9 = tf.concat([self.light[:,:9], self.light[:,10:19], self.light[:,20:29]], 1)
         # print (light[:,:9].get_shape())
         # print (light9.get_shape())
-        self.lightloss = tf.reduce_mean(tf.abs(light9 - self.lightgt)) # 16 27
+        # self.lightloss = tf.reduce_mean(tf.abs(light9 - self.lightgt)) # 16 27
+        self.lightloss = tf.reduce_mean(tf.abs(self.light - self.lightgt)) # 16 27
+        # self.swloss = shadingweightloss(self.shadingweight)
+        self.weightloss = tf.reduce_mean(tf.abs(self.shadingweight - 1.5))
 
         # shading
         # self.shadingloss = tf.reduce_mean(tf.abs(shading - shadinggt))
@@ -370,7 +376,7 @@ class Trainer(object):
 
         # self.outloss = tf.reduce_mean(tf.abs(out - x))
 
-        self.g_loss = self.generatorloss + self.albedoloss + self.normalloss + self.unitnormloss + self.lightloss + self.shadingsmoothloss + self.shadingbwsloss + self.reconloss + self.maskloss
+        self.g_loss = self.generatorloss + self.albedoloss + self.normalloss + self.unitnormloss + self.lightloss + self.shadingsmoothloss + self.shadingbwsloss + self.reconloss + self.maskloss + self.weightloss
         # self.g_loss = self.renderingloss + self.generatorloss + self.albedoloss + self.normalloss + self.unitnormloss + self.lightloss + self.shadingloss + self.reconloss
 
 
@@ -412,6 +418,7 @@ class Trainer(object):
             # tf.summary.scalar("loss/normalsmoothloss", self.normalsmoothloss),
             tf.summary.scalar("loss/unitnormloss", self.unitnormloss),
             tf.summary.scalar("loss/lightloss", self.lightloss),
+            tf.summary.scalar("loss/weightloss", self.weightloss),
             # tf.summary.scalar("loss/shadingloss", self.shadingloss),
             tf.summary.scalar("loss/reconloss", self.reconloss),
             # tf.summary.scalar("loss/outloss", self.outloss),
@@ -443,7 +450,7 @@ class Trainer(object):
     def generate(self, inputs, path, idx=None):
         inputs = inputs.transpose([0, 3, 1, 2])
 
-        lightgt, light, normal, mask, shading, albedo, recon, shading2, recon2, avgr, avgg, avgb = self.sess.run([self.lightgt, self.light, self.normal, self.mask, self.shading, self.albedo, self.recon, self.shading2, self.recon2, self.avg_r, self.avg_g, self.avg_b], {self.x: inputs})
+        lightgt, light, weight, normal, mask, shading, albedo, recon, shading2, recon2, avgr, avgg, avgb = self.sess.run([self.lightgt, self.light, self.shadingweight, self.normal, self.mask, self.shading, self.albedo, self.recon, self.shading2, self.recon2, self.avg_r, self.avg_g, self.avg_b], {self.x: inputs})
 
 
         mask_path = os.path.join(path, '{}_M.png'.format(idx))
@@ -481,8 +488,10 @@ class Trainer(object):
         # light coefficient print and save as txt
         lightgt_path = os.path.join(path, '{}_lightgt.txt'.format(idx))
         light_path = os.path.join(path, '{}_light.txt'.format(idx))
+        weight_path = os.path.join(path, '{}_weight.txt'.format(idx))
         np.savetxt(lightgt_path, lightgt)
         np.savetxt(light_path, light)
+        np.savetxt(weight_path, weight)
 
 
         print (avgr)

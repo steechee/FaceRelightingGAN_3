@@ -129,14 +129,17 @@ def GeneratorCNN(x, output_num, z_num, repeat_num, hidden_num, data_format, reus
         # print x_l.get_shape() # 16 128 1 1
         x_l = tf.reshape(x_l, [16, 128])
         # print x_l.get_shape() # 16 128
-        lightout = slim.fully_connected(x_l, 30, activation_fn=None)
+        lightout = slim.fully_connected(x_l, 27, activation_fn=None)
+        shadingweight = slim.fully_connected(x_l, 3, activation_fn=None)
         # print lightout.get_shape() # 16 27
+        # print shadingweight.get_shape() # 16 3
         # print lightout.dtype # float32
 
 
         ## reconstruction
 
-        shading = getshading10(normalout,lightout) # 16 3 64 64
+        # shading = getshading10(normalout,lightout) # 16 3 64 64
+        shading = getshading10(normalout,lightout, shadingweight) # 16 3 64 64
 
         recon = shading*albedoout
 
@@ -148,14 +151,15 @@ def GeneratorCNN(x, output_num, z_num, repeat_num, hidden_num, data_format, reus
         # relight = tf.random_shuffle(relight)
         # light2 = tf.random_shuffle(lightout)
         light2 = lightout
+        shadingweight2 = shadingweight
         # print relight.get_shape() # 16 27
-        shading2 = getshading10(normalout,light2)
+        shading2 = getshading10(normalout,light2, shadingweight2)
         recon2 = shading2*albedoout
 
         # out = recon * maskout - maskout * bggt
 
     variables = tf.contrib.framework.get_variables(vs)
-    return albedoout, normalout, maskout, lightout, shading, recon, light2, shading2, recon2, variables
+    return albedoout, normalout, maskout, lightout, shadingweight, shading, recon, light2, shading2, recon2, variables
     # return normalout, maskout, albedoout, lightout, shading, recon, relight, reshading, recon2, variables
     # return normalout, albedoout, lightout, shading, recon, variables
 

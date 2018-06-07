@@ -212,7 +212,7 @@ def getshading(normal, light):
 
     return shading
 
-def getshading10(normal, light):
+def getshading10(normal, light, weight):
     # normal 16*3*64*64
     # light 100*10*3
 
@@ -225,22 +225,31 @@ def getshading10(normal, light):
     nPixel = normal.shape[1]*normal.shape[2] # 64*64 = 4096
     # print (light.shape)
 
-    # Lr = light[:,:10] # 16 9
-    # Lg = light[:,10:20] # 16 9
-    # Lb = light[:,20:] # 16 9
+    Lr = light[:,:9] # 16 9
+    Lg = light[:,9:18] # 16 9
+    Lb = light[:,18:] # 16 9
+    Wr = weight[:,0] # 16,
+    Wg = weight[:,1] # 16,
+    Wb = weight[:,2] # 16,
+
     # print (Lr.shape)
     # print (Lg.shape)
     # print (Lb.shape)
-    Lr = light[:,:9] # 16 9
-    Wr = light[:,9]
-    Lg = light[:,10:19] # 16 9
-    Wg = light[:,19]
-    Lb = light[:,20:29] # 16 9
-    Wb = light[:,29]
+    # print (Wr.shape)
+    # print (Wg.shape)
+    # print (Wb.shape)
 
-    Wr = tf.clip_by_value(Wr, 1.3, 1.7)
-    Wg = tf.clip_by_value(Wg, 1.3, 1.7)
-    Wb = tf.clip_by_value(Wb, 1.3, 1.7)
+
+    # Lr = light[:,:9] # 16 9
+    # Wr = light[:,9]
+    # Lg = light[:,10:19] # 16 9
+    # Wg = light[:,19]
+    # Lb = light[:,20:29] # 16 9
+    # Wb = light[:,29]
+
+    # Wr = tf.clip_by_value(Wr, 1.3, 1.7)
+    # Wg = tf.clip_by_value(Wg, 1.3, 1.7)
+    # Wb = tf.clip_by_value(Wb, 1.3, 1.7)
 
     Ns = tf.reshape(normal,[nSample, nPixel, 3]) # 16*4096*3
     N_ext = tf.ones([nSample, nPixel, 1], dtype=tf.float32) # 16*4096*1
@@ -449,6 +458,11 @@ def smoothnessloss(input):
     nelement = tf.cast(tf.size(input),dtype=tf.float32)
     loss = (tf.reduce_sum(tf.abs(x_diff))+tf.reduce_sum(tf.abs(y_diff)))/nelement
     return loss
+
+
+# def shadingweightloss(input):
+#
+#     return loss
 
 def bwsloss(input, mask):
 
