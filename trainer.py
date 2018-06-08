@@ -22,7 +22,7 @@ from utils import getshading
 from utils import getshadingnp
 from utils import smoothnessloss
 from utils import bwsloss
-# from utils import shadingweightloss
+from utils import swloss
 import datetime
 
 def next(loader):
@@ -150,6 +150,7 @@ class Trainer(object):
         save_image(shading_fixed, '{}/x_fixed_shading.png'.format(self.model_dir))
         save_image(albedo_fixed, '{}/x_fixed_albedo.png'.format(self.model_dir))
 
+        save_image(x_fixed*mask_fixed/255., '{}/x_fixed_rgb*mask.png'.format(self.model_dir))
 
         prev_measure = 1
         measure_history = deque([0]*self.lr_update_step, self.lr_update_step)
@@ -358,9 +359,10 @@ class Trainer(object):
         # print (light[:,:9].get_shape())
         # print (light9.get_shape())
         # self.lightloss = tf.reduce_mean(tf.abs(light9 - self.lightgt)) # 16 27
-        self.lightloss = tf.reduce_mean(tf.abs(self.light - self.lightgt)) # 16 27
+        self.lightloss = 2*tf.reduce_mean(tf.abs(self.light - self.lightgt)) # 16 27
         # self.swloss = shadingweightloss(self.shadingweight)
-        self.weightloss = tf.reduce_mean(tf.abs(self.shadingweight - 1.5))
+        # self.weightloss = tf.reduce_mean(tf.abs(self.shadingweight - 1.5))
+        self.weightloss = tf.reduce_mean(swloss(self.shadingweight))
 
         # shading
         # self.shadingloss = tf.reduce_mean(tf.abs(shading - shadinggt))
@@ -368,15 +370,16 @@ class Trainer(object):
         self.shadingbwsloss, self.avg_r, self.avg_g, self.avg_b = bwsloss(shading,tf.transpose(self.mask/255.,[0,3,1,2]))
 
         # recon
-        self.reconloss = tf.reduce_mean(tf.abs(recon*tf.transpose(self.mask/255.,[0,3,1,2]) - x*tf.transpose(self.mask/255.,[0,3,1,2]))) # 16 3 64 64
+        self.reconloss = 5*tf.reduce_mean(tf.abs(recon*tf.transpose(self.mask/255.,[0,3,1,2]) - x*tf.transpose(self.mask/255.,[0,3,1,2]))) # 16 3 64 64
 
         # mask
-        self.maskloss = 0.0001*tf.reduce_sum(tf.abs(mask - maskgt))
+        self.maskloss = 0.00005*tf.reduce_sum(tf.abs(mask - maskgt))
         # self.maskloss = 0.004*tf.reduce_mean(tf.abs(mask - maskgt))
 
         # self.outloss = tf.reduce_mean(tf.abs(out - x))
 
-        self.g_loss = self.generatorloss + self.albedoloss + self.normalloss + self.unitnormloss + self.lightloss + self.shadingsmoothloss + self.shadingbwsloss + self.reconloss + self.maskloss + self.weightloss
+        self.g_loss = self.generatorloss + self.albedoloss + self.normalloss + self.unitnormloss + self.lightloss + self.shadingsmoothloss + self.reconloss + self.maskloss + self.weightloss
+        # self.g_loss = self.generatorloss + self.albedoloss + self.normalloss + self.unitnormloss + self.lightloss + self.shadingsmoothloss + self.shadingbwsloss + self.reconloss + self.maskloss + self.weightloss
         # self.g_loss = self.renderingloss + self.generatorloss + self.albedoloss + self.normalloss + self.unitnormloss + self.lightloss + self.shadingloss + self.reconloss
 
 

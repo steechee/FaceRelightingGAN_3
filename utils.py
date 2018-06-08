@@ -460,9 +460,38 @@ def smoothnessloss(input):
     return loss
 
 
-# def shadingweightloss(input):
-#
-#     return loss
+def swloss(input):
+    # print (input.shape)
+    # print (input.shape[0])
+    #
+    # for idx in range(input.shape[0]):
+    #     for channel in range(input.shape[1]):
+    #         temp = input[idx,channel]
+    #         if tf.greater_equal(temp,1.8):
+    #             loss[idx,channel] = tf.abs(temp - 1.7)**2
+    #         elif tf.less_equal(temp,1.2):
+    #             loss[idx,channel] = tf.abs(temp - 1.3)**2
+    #         else:
+    #             loss[idx,channel] = 0
+    # print (loss.shape)
+    # loss = tf.reduce_mean(loss)
+    # print (loss.shape)
+    # return loss
+    # loss = np.array(np.zeros(input.shape,dtype=np.float32))
+    # print (loss.shape)
+    #
+    # for idx in range(input.shape[0]):
+    #     for channel in range(input.shape[1]):
+    #         temp = input[idx,channel]
+    #         def f1(): return (temp-1.8)**2
+    #         def f2(): return (temp-1.2)**2
+    #         def f3(): return tf.constant(0,dtype=tf.float32)
+    #         loss[idx,channel] = tf.case({tf.greater_equal(temp,1.8): f1, tf.less_equal(temp,1.2): f2},default = f3)
+    # loss = (input - 1.5)**2 - 0.09 # 0.3 1.2 1.8
+    loss = (input - 1.5)**2 - 0.04 # 0.2 1.3 1.7
+    loss = tf.maximum(loss,0) # 16 3
+
+    return loss
 
 def bwsloss(input, mask):
 
