@@ -14,7 +14,7 @@ from collections import deque
 
 from models import *
 from utils import save_image
-from utils import templight
+# from utils import templight
 from utils import getmatrix
 from utils import getshading10
 from utils import getshadingnp10
@@ -169,7 +169,7 @@ class Trainer(object):
                     "d_loss_real": self.d_loss_real,
                     "d_loss_fake": self.d_loss_fake,
                     "g_loss": self.g_loss,
-                    # "renderingloss": self.renderingloss,
+                    "renderingloss": self.renderingloss,
                     "generatorloss": self.generatorloss,
                     "normalloss": self.normalloss,
                     "maskloss": self.maskloss,
@@ -200,7 +200,7 @@ class Trainer(object):
                 d_loss_real = result['d_loss_real']
                 d_loss_fake = result['d_loss_fake']
                 g_loss = result['g_loss']
-                # renderingloss = result['renderingloss']
+                renderingloss = result['renderingloss']
                 generatorloss = result['generatorloss']
                 normalloss = result['normalloss']
                 albedoloss = result['albedoloss']
@@ -217,8 +217,8 @@ class Trainer(object):
                 # outloss = result['outloss']
 
 
-                print("[{}/{}] measure: {:.4f}, k_t: {:.4f}, balance: {:.4f}, Loss_D: {:.6f}, d_loss_real: {:.4f}, d_loss_fake: {:.4f}, Loss_G: {:.6f}, generator: {:.4f}, albedo: {:.4f}, normal: {:.4f}, unitnorm: {:.4f}, light: {:.4f},  weight: {:.4f}, shadingsmooth: {:.4f}, shadingbws: {:.4f}, mask: {:.4f}, recon: {:.4f}". \
-                      format(step, self.max_step, measure, k_t, balance, d_loss, d_loss_real, d_loss_fake, g_loss, generatorloss, albedoloss, normalloss, unitnormloss, lightloss, weightloss, shadingsmoothloss, shadingbwsloss, maskloss, reconloss))
+                print("[{}/{}] measure: {:.4f}, k_t: {:.4f}, balance: {:.4f}, Loss_D: {:.6f}, d_loss_real: {:.4f}, d_loss_fake: {:.4f}, Loss_G: {:.6f}, generator: {:.4f}, redering: {:.4f}, albedo: {:.4f}, normal: {:.4f}, unitnorm: {:.4f}, light: {:.4f},  weight: {:.4f}, shadingsmooth: {:.4f}, shadingbws: {:.4f}, mask: {:.4f}, recon: {:.4f}". \
+                      format(step, self.max_step, measure, k_t, balance, d_loss, d_loss_real, d_loss_fake, g_loss, generatorloss, renderingloss, albedoloss, normalloss, unitnormloss, lightloss, weightloss, shadingsmoothloss, shadingbwsloss, maskloss, reconloss))
                 # print("[{}/{}] measure: {:.4f}, k_t: {:.4f}, balance: {:.4f}, Loss_D: {:.6f}, d_loss_real: {:.4f}, d_loss_fake: {:.4f}, Loss_G: {:.6f}, redering: {:.4f},  generator: {:.4f}, albedo: {:.4f}, normal: {:.4f}, unitnorm: {:.4f}, light: {:.4f}, shading: {:.4f}, recon: {:.4f}". \
                 #     format(step, self.max_step, measure, k_t, balance, d_loss, d_loss_real, d_loss_fake, g_loss, renderingloss, generatorloss, albedoloss, normalloss, unitnormloss, lightloss, shadingloss, reconloss))
 
@@ -263,7 +263,7 @@ class Trainer(object):
         self.k_t = tf.Variable(0., trainable=False, name='k_t')
 
         ## encoder, resblock and decoder consist generatorCNN
-        albedo, normal, mask, self.light, self.shadingweight, shading, recon, light2, shading2, recon2, self.G_var = GeneratorCNN(
+        albedo, normal, mask, self.light, self.shadingweight, shading, recon, pointrecon, self.G_var = GeneratorCNN(
                 self.x, self.channel, self.z_num, self.repeat_num,
                 self.conv_hidden_num, self.data_format, reuse=False)
         # print (albedo.get_shape()) #16 3 64 64
@@ -284,9 +284,7 @@ class Trainer(object):
         self.mask = denorm_img(mask, self.data_format)
         self.shading = denorm_img(shading, self.data_format)
         self.recon = denorm_img(recon, self.data_format)
-
-        self.shading2 = denorm_img(shading2, self.data_format)
-        self.recon2 = denorm_img(recon2, self.data_format)
+        self.pointrecon = denorm_img(pointrecon, self.data_format)
 
         # print (self.albedo.get_shape()) #16 64 64 3
         # print (self.albedogt.get_shape()) #16 64 64 3
@@ -305,21 +303,35 @@ class Trainer(object):
         # print (out.get_shape()) # 16 3 64 64
         # print (out2.get_shape()) # 16 3 64 64
 
+        ## rendering loss
+        # pointlight =     # 12 3
+        # newshading = getpointshading(normal, pointlight) #
+        # AE_newshading = DiscriminatorCNN(newshading, )
+
+
+
         d_out, self.D_z, self.D_var = DiscriminatorCNN(
-        tf.concat([x, recon, recon2], 0), self.channel, self.z_num, self.repeat_num,
+        tf.concat([x, recon, pointrecon], 0), self.channel, self.z_num, self.repeat_num,
         self.conv_hidden_num, self.data_format)
-        AE_x, AE_recon, AE_recon2 = tf.split(d_out, 3)
+        # AE_x, AE_recon = tf.split(d_out, 2)
+        # print (d_out.get_shape()) # 16+16+16*12 224 3 64 64
+        # AE_x, AE_recon = tf.split(d_out, 2)
+        # AE_x, AE_recon, AE_pointrecon1, = tf.split(d_out, 2)
+        AE_x = d_out[:16]
+        AE_recon = d_out[16:32]
+        AE_pointrecon = d_out[32:]
+
 
         # print (AE_x.get_shape()) #16 3 64 64
         # print (AE_recon.get_shape()) #16 3 64 64
-        # print (AE_recon2.get_shape()) #16 3 64 64
+        # print (AE_pointrecon.get_shape()) #192 3 64 64
 
 
-        self.AE_x, self.AE_recon, self.AE_recon2 = denorm_img(AE_x, self.data_format), denorm_img(AE_recon, self.data_format), denorm_img(AE_recon2, self.data_format)
+        self.AE_x, self.AE_recon, self.AE_pointrecon = denorm_img(AE_x, self.data_format), denorm_img(AE_recon, self.data_format), denorm_img(AE_pointrecon, self.data_format)
 
         # print (self.AE_x.get_shape()) #16 64 64 3
         # print (self.AE_recon.get_shape()) #16 64 64 3
-        # print (self.AE_recon2.get_shape()) #16 64 64 3
+        # print (self.AE_pointrecon.get_shape()) #192 64 64 3
 
         if self.optimizer == 'adam':
             optimizer = tf.train.AdamOptimizer
@@ -378,7 +390,11 @@ class Trainer(object):
 
         # self.outloss = tf.reduce_mean(tf.abs(out - x))
 
-        self.g_loss = self.generatorloss + self.albedoloss + self.normalloss + self.unitnormloss + self.lightloss + self.shadingsmoothloss + self.reconloss + self.maskloss + self.weightloss
+        # rendering loss
+        self.renderingloss = tf.reduce_mean(tf.abs(AE_pointrecon - pointrecon))
+
+
+        self.g_loss = self.generatorloss + self.albedoloss + self.normalloss + self.unitnormloss + self.lightloss + self.shadingsmoothloss + self.reconloss + self.maskloss + self.weightloss + self.renderingloss
         # self.g_loss = self.generatorloss + self.albedoloss + self.normalloss + self.unitnormloss + self.lightloss + self.shadingsmoothloss + self.shadingbwsloss + self.reconloss + self.maskloss + self.weightloss
         # self.g_loss = self.renderingloss + self.generatorloss + self.albedoloss + self.normalloss + self.unitnormloss + self.lightloss + self.shadingloss + self.reconloss
 
@@ -397,20 +413,20 @@ class Trainer(object):
         self.summary_op = tf.summary.merge([
             tf.summary.image("AE_input", self.AE_x),
             tf.summary.image("AE_recon", self.AE_recon),
-            tf.summary.image("AE_recon2", self.AE_recon2),
+            # tf.summary.image("AE_recon2", self.AE_recon2),
             tf.summary.image("G_normal", self.normal),
             tf.summary.image("G_mask", self.mask),
             tf.summary.image("G_albedo", self.albedo),
             tf.summary.image("G_shading", self.shading),
-            tf.summary.image("G_shading2", self.shading2),
+            # tf.summary.image("G_shading2", self.shading2),
             tf.summary.image("G_recon", self.recon),
-            tf.summary.image("G_recon2", self.recon2),
+            # tf.summary.image("G_recon2", self.recon2),
 
             tf.summary.scalar("loss/d_loss", self.d_loss),
             tf.summary.scalar("loss/d_loss_real", self.d_loss_real),
             tf.summary.scalar("loss/d_loss_fake", self.d_loss_fake),
             tf.summary.scalar("loss/g_loss", self.g_loss),
-            # tf.summary.scalar("loss/renderingloss", self.renderingloss),
+            tf.summary.scalar("loss/renderingloss", self.renderingloss),
             tf.summary.scalar("loss/generatorloss", self.generatorloss),
             tf.summary.scalar("loss/normalloss", self.normalloss),
             tf.summary.scalar("loss/albedoloss", self.albedoloss),
@@ -453,7 +469,7 @@ class Trainer(object):
     def generate(self, inputs, path, idx=None):
         inputs = inputs.transpose([0, 3, 1, 2])
 
-        lightgt, light, weight, normal, mask, shading, albedo, recon, shading2, recon2, avgr, avgg, avgb = self.sess.run([self.lightgt, self.light, self.shadingweight, self.normal, self.mask, self.shading, self.albedo, self.recon, self.shading2, self.recon2, self.avg_r, self.avg_g, self.avg_b], {self.x: inputs})
+        lightgt, light, weight, normal, mask, shading, albedo, recon, pointrecon, avgr, avgg, avgb = self.sess.run([self.lightgt, self.light, self.shadingweight, self.normal, self.mask, self.shading, self.albedo, self.recon, self.pointrecon, self.avg_r, self.avg_g, self.avg_b], {self.x: inputs})
 
 
         mask_path = os.path.join(path, '{}_M.png'.format(idx))
@@ -501,6 +517,12 @@ class Trainer(object):
         print (avgg)
         print (avgb)
 
+        for step in range(12):
+            pointrecon_path = os.path.join(path, '{}_PR{}.png'.format(idx, step))
+            save_image(pointrecon[step*16:(step+1)*16], pointrecon_path)
+            print("[*] Samples saved: {}".format(pointrecon_path))
+
+
         # shading2_path = os.path.join(path, '{}_S2.png'.format(idx))
         # save_image(shading2, shading2_path)
         # print("[*] Samples saved: {}".format(shading2_path))
@@ -516,7 +538,7 @@ class Trainer(object):
 
         inputs = inputs.transpose([0, 3, 1, 2])
 
-        AE_x, AE_recon, AE_recon2, mask = self.sess.run([self.AE_x, self.AE_recon, self.AE_recon2, self.mask], {self.x: inputs})
+        AE_x, AE_recon, mask = self.sess.run([self.AE_x, self.AE_recon, self.mask], {self.x: inputs})
 
         AE_x_path = os.path.join(path, '{}_D_real.png'.format(idx))
         save_image(AE_x, AE_x_path)

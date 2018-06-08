@@ -83,18 +83,95 @@ def save_image(tensor, filename, nrow=8, padding=2,
     im.save(filename)
 
 
-def templight(self):
-    light = np.array([[-7.92065536e-02,  3.49902089e-02,  1.42030788e-01],
-    [ 2.97175636e-02, -1.10210985e-03, -1.12216669e-02],
-    [ 1.14490456e+00,  7.25263925e-01,  4.18665994e-01],
-    [ 6.91308048e-02,  4.45049699e-02,  3.14903428e-02],
-    [-9.65037690e-03, -3.04341827e-03, -9.75049582e-04],
-    [ 1.76383977e-01,  2.28311868e-01,  2.23022992e-01],
-    [-7.38700709e-01, -4.50987158e-01, -1.76474364e-01],
-    [-8.12088808e-02, -4.98664871e-02, -3.19874631e-02],
-    [-1.07426664e-01, -1.50386091e-01, -1.36360101e-01]])
+# def getlight(self):
+#     light = tf.constant([
+#     [-1, 0, 0],
+#     [-1/np.sqrt(2.), 1/np.sqrt(2.), 0],
+#     [0, 1, 0],
+#     [1/np.sqrt(2.), 1/np.sqrt(2.), 0],
+#     [1, 0, 0],
+#     [-1/2., 1/np.sqrt(2.), 1/2.],
+#     [1/2., 1/np.sqrt(2.), 1/2.],
+#     [-1/np.sqrt(2.), 0, 1/np.sqrt(2.)],
+#     [0, 0, 1],
+#     [1/np.sqrt(2.), 0, 1/np.sqrt(2.)],
+#     [-1/2., -1/np.sqrt(2.), 1/2.],
+#     [1/2., -1/np.sqrt(2.), 1/2.]], dtype=tf.float32)
+#
+#     return light
 
-    return light
+def getpointshading(normal, pointlight):
+    # normal 16 3 64 64
+    # pointlight 12 3
+    # print (normal.get_shape()) # 16 3 64 64
+    # print (pointlight.get_shape())# 12 3
+
+
+    pointlight = tf.transpose(pointlight, [1,0]) # 3 12
+    # print (pointlight.get_shape()) # 3 12
+
+    for idx in range(normal.shape[0]): # 16
+        N = tf.transpose(normal[idx], [1,2,0]) # 3 64 64 --> 64 64 3
+        # print (N.get_shape()) # 64 64 3
+
+        N2 = tf.reshape(N,[N.shape[0]*N.shape[1], N.shape[2]]) # 4096 3
+        # print (N2.get_shape())# 4096 3
+
+        S = tf.matmul(N2, pointlight) # 4096 12
+        # print (S.get_shape()) # 4096 12
+        S = tf.reshape(S, [1, N.shape[0], N.shape[1], pointlight.shape[1]]) # 1 64 64 12
+        # print (S.get_shape())s
+
+        if idx == 0:
+            pointshading = S
+        else:
+            pointshading = tf.concat([pointshading, S], 0) # 16 64 64 12
+
+    # print (pointshading.get_shape()) # 16 64 64 12
+
+
+    return pointshading
+
+
+
+def getpointrecon(albedo, pointshading):
+    # albedo 16 3 64 64
+    # pointshading 16 64 64 12
+    # print (albedo.get_shape()) # 16 3 64 64
+    # print (pointshading.get_shape()) # 16 64 64 12
+
+    albedo = tf.transpose(albedo, [0,2,3,1]) # 16 64 64 3
+    pointshading = tf.transpose(pointshading, [3,0,1,2]) # 12 16 64 64
+    # print (albedo.get_shape()) # 16 64 64 3
+    # print (pointshading.get_shape()) # 12 16 64 64
+
+    for idx in range(pointshading.shape[0]): # 12
+        shading = pointshading[idx] # 16 64 64
+        # print (shading.get_shape()) # 16 64 64
+
+        shading = tf.reshape(shading,[shading.shape[0], shading.shape[1], shading.shape[2], 1])
+        # print (shading.get_shape()) # 16 64 64 1
+
+        shading = tf.concat([shading, shading, shading], 3)
+        # print (shading.get_shape()) # 16 64 64 3
+
+        # recon[:,:,:,0] = tf.multiply(albedo[:,:,:,0],shading) #  recon = 16 64 64 3
+        # recon[:,:,:,1] = tf.multiply(albedo[:,:,:,1],shading)
+        # recon[:,:,:,2] = tf.multiply(albedo[:,:,:,2],shading)
+        recon = tf.multiply(albedo, shading) # 16 64 64 3
+        # print (recon.get_shape()) # 16 64 64 3
+
+        if idx == 0:
+            pointrecon = recon # 16 64 64 3
+        else:
+            pointrecon = tf.concat([pointrecon, recon], 0) # 16*12 64 64 3
+
+    # print (pointrecon.get_shape()) # 192 64 64 3
+
+    pointrecon = tf.transpose(pointrecon,[0,3,1,2]) # 16*12 3 64 64
+    # print (pointrecon.get_shape()) # 192 3 64 64
+
+    return pointrecon
 
 
 def getmatrix(L):
