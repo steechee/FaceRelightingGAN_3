@@ -7,7 +7,7 @@ from utils import getpointshading
 from utils import getpointrecon
 from hyper_parameters import *
 
-def GeneratorCNN(x, output_num, z_num, repeat_num, hidden_num, data_format, reuse):
+def GeneratorCNN(x, normalgt, albedogt, output_num, z_num, repeat_num, hidden_num, data_format, reuse):
     with tf.variable_scope("G", reuse=reuse) as vs:
         # print x.get_shape() # 16 3 64 64
 
@@ -145,7 +145,7 @@ def GeneratorCNN(x, output_num, z_num, repeat_num, hidden_num, data_format, reus
 
         recon = shading*albedoout
 
-        ## relighting
+        ## rendering loss
         # pointlight 12*3 = light# * [lx ly lz]
         pointlight = tf.constant([
         [-1, 0, 0],
@@ -164,11 +164,21 @@ def GeneratorCNN(x, output_num, z_num, repeat_num, hidden_num, data_format, reus
         # print (pointlight.get_shape()) # 12 3
 
         ## pointshading 16*64*64*12 = batch * x * y * light#
-        pointshading = getpointshading(normalout, pointlight) # 16 64 64 12
+        # pointshading = getpointshading(normalout, pointlight) # 16 64 64 12
+        pointshading = getpointshading(normalgt, pointlight) # 16 64 64 12
 
         ## pointrecon 192(12*16)*3*64*64
-        pointrecon = getpointrecon(albedoout, pointshading)
+        # pointrecon = getpointrecon(albedoout, pointshading)
+        pointrecon = getpointrecon(albedogt, pointshading)
 
+
+        ## relighting
+        newlight = tf.concat([lightout, shadingweight],1)
+        print (newlight.get_shape())
+        newlight = tf.random_shuffle(newlight)
+
+        newshading = getshading10(normalout, newlight[:,:27], newlight[:,27:])
+        newrecon = newshading*albedoout
 
         # relight = np.random.normal(0, 1, size=(16, 27))
         # relight = tf.random_normal([16, 27], mean=0.0, stddev=1.0, dtype=tf.float32)
@@ -183,7 +193,7 @@ def GeneratorCNN(x, output_num, z_num, repeat_num, hidden_num, data_format, reus
         # out = recon * maskout - maskout * bggt
 
     variables = tf.contrib.framework.get_variables(vs)
-    return albedoout, normalout, maskout, lightout, shadingweight, shading, recon, pointrecon, variables
+    return albedoout, normalout, maskout, lightout, shadingweight, shading, recon, pointrecon, newlight, newshading, newrecon, variables
     # return albedoout, normalout, maskout, lightout, shadingweight, shading, recon, light2, shading2, recon2, variables
     # return normalout, maskout, albedoout, lightout, shading, recon, relight, reshading, recon2, variables
     # return normalout, albedoout, lightout, shading, recon, variables

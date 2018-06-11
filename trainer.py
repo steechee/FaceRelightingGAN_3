@@ -217,8 +217,10 @@ class Trainer(object):
                 # outloss = result['outloss']
 
 
-                print("[{}/{}] measure: {:.4f}, k_t: {:.4f}, balance: {:.4f}, Loss_D: {:.6f}, d_loss_real: {:.4f}, d_loss_fake: {:.4f}, Loss_G: {:.6f}, generator: {:.4f}, redering: {:.4f}, albedo: {:.4f}, normal: {:.4f}, unitnorm: {:.4f}, light: {:.4f},  weight: {:.4f}, shadingsmooth: {:.4f}, shadingbws: {:.4f}, mask: {:.4f}, recon: {:.4f}". \
-                      format(step, self.max_step, measure, k_t, balance, d_loss, d_loss_real, d_loss_fake, g_loss, generatorloss, renderingloss, albedoloss, normalloss, unitnormloss, lightloss, weightloss, shadingsmoothloss, shadingbwsloss, maskloss, reconloss))
+                print("[{}/{}] k_t: {:.4f}, d_loss_real: {:.4f}, d_loss_fake: {:.4f}, Loss_G: {:.4f}, albedo: {:.4f}, normal: {:.4f}, unitnorm: {:.4f}, light: {:.4f}, weight: {:.4f}, shadingsmooth: {:.4f}, redering: {:.4f}, mask: {:.4f}, recon: {:.4f}". \
+                      format(step, self.max_step, k_t, d_loss_real, d_loss_fake, g_loss, albedoloss, normalloss, unitnormloss, lightloss, weightloss, shadingsmoothloss, renderingloss, maskloss, reconloss))
+                # print("[{}/{}] measure: {:.4f}, k_t: {:.4f}, balance: {:.4f}, Loss_D: {:.6f}, d_loss_real: {:.4f}, d_loss_fake: {:.4f}, Loss_G: {:.6f}, generator: {:.4f}, redering: {:.4f}, albedo: {:.4f}, normal: {:.4f}, unitnorm: {:.4f}, light: {:.4f},  weight: {:.4f}, shadingsmooth: {:.4f}, shadingbws: {:.4f}, mask: {:.4f}, recon: {:.4f}". \
+                 # print("[{}/{}] measure: {:.3f}, k_t: {:.3f}, balance: {:.3f}, Loss_D: {:.3f}, d_loss_real: {:.3f}, d_loss_fake: {:.3f}, Loss_G: {:.3f}, generator: {:.3f}, redering: {:.3f}, albedo: {:.3f}, normal: {:.3f}, unitnorm: {:.3f}, light: {:.3f},  weight: {:.3f}, shadingsmooth: {:.3f}, shadingbws: {:.3f}, mask: {:.3f}, recon: {:.3f}". \
                 # print("[{}/{}] measure: {:.4f}, k_t: {:.4f}, balance: {:.4f}, Loss_D: {:.6f}, d_loss_real: {:.4f}, d_loss_fake: {:.4f}, Loss_G: {:.6f}, redering: {:.4f},  generator: {:.4f}, albedo: {:.4f}, normal: {:.4f}, unitnorm: {:.4f}, light: {:.4f}, shading: {:.4f}, recon: {:.4f}". \
                 #     format(step, self.max_step, measure, k_t, balance, d_loss, d_loss_real, d_loss_fake, g_loss, renderingloss, generatorloss, albedoloss, normalloss, unitnormloss, lightloss, shadingloss, reconloss))
 
@@ -263,8 +265,8 @@ class Trainer(object):
         self.k_t = tf.Variable(0., trainable=False, name='k_t')
 
         ## encoder, resblock and decoder consist generatorCNN
-        albedo, normal, mask, self.light, self.shadingweight, shading, recon, pointrecon, self.G_var = GeneratorCNN(
-                self.x, self.channel, self.z_num, self.repeat_num,
+        albedo, normal, mask, self.light, self.shadingweight, shading, recon, pointrecon, self.newlight, newshading, newrecon, self.G_var = GeneratorCNN(
+                self.x, normalgt, albedogt, self.channel, self.z_num, self.repeat_num,
                 self.conv_hidden_num, self.data_format, reuse=False)
         # print (albedo.get_shape()) #16 3 64 64
         # print (normal.get_shape()) #16 3 64 64
@@ -285,6 +287,8 @@ class Trainer(object):
         self.shading = denorm_img(shading, self.data_format)
         self.recon = denorm_img(recon, self.data_format)
         self.pointrecon = denorm_img(pointrecon, self.data_format)
+        self.newshading = denorm_img(newshading, self.data_format)
+        self.newrecon = denorm_img(newrecon, self.data_format)
 
         # print (self.albedo.get_shape()) #16 64 64 3
         # print (self.albedogt.get_shape()) #16 64 64 3
@@ -562,6 +566,33 @@ class Trainer(object):
         # save_image(AE_recon2, AE_recon2_path)
         # print("[*] Samples saved: {}".format(AE_recon2_path))
 
+    def relight(self, inputs, path, idx=None):
+
+        inputs = inputs.transpose([0, 3, 1, 2])
+
+        newshading, newrecon, newlight, mask = self.sess.run([self.newshading, self.newrecon, self.newlight, self.mask], {self.x: inputs})
+
+        newshading_path = os.path.join(path, '{}_newshading.png'.format(idx))
+        save_image(newshading, newshading_path)
+        print("[*] Samples saved: {}".format(newshading_path))
+
+        newshading2_path = os.path.join(path, '{}_newshading2.png'.format(idx))
+        save_image(newshading*mask/255., newshading2_path)
+        print("[*] Samples saved: {}".format(newshading2_path))
+
+        newrecon_path = os.path.join(path, '{}_newrecon.png'.format(idx))
+        save_image(newrecon, newrecon_path)
+        print("[*] Samples saved: {}".format(newrecon_path))
+
+        newrecon2_path = os.path.join(path, '{}_newrecon2.png'.format(idx))
+        save_image(newrecon*mask/255., newrecon2_path)
+        print("[*] Samples saved: {}".format(newrecon2_path))
+
+        # light coefficient print and save as txt
+        newlight_path = os.path.join(path, '{}_newlight+weight.txt'.format(idx))
+        np.savetxt(newlight_path, newlight)
+
+
 
     def encode(self, inputs):
         if inputs.shape[3] in [1, 3]:
@@ -635,6 +666,7 @@ class Trainer(object):
             # save_image(real1_batch, os.path.join(root_path, 'test{}_real1.png'.format(step)))
             # save_image(real2_batch, os.path.join(root_path, 'test{}_real2.png'.format(step)))
             save_image(x_fixed, os.path.join(result_dir, 'test{}_input.png'.format(step)))
+            save_image(x_fixed*mask_fixed/255., os.path.join(result_dir, 'test{}_input*mask.png'.format(step)))
 
             # self.autoencode(
             #         real1_batch, self.model_dir, idx=os.path.join(root_path, "test{}_real1".format(step)))
@@ -651,6 +683,9 @@ class Trainer(object):
             # z_fixed = np.random.uniform(-1, 1, size=(self.batch_size, self.z_num))
             # G_z = self.generate(z_fixed, path=os.path.join(root_path, "test{}_G_z.png".format(step)))
             self.generate(x_fixed, result_dir, idx="test{}".format(step))
+
+            self.relight(x_fixed, result_dir, idx="test{}".format(step))
+
 
             # if all_G_z is None:
             #     all_G_z = G_z
