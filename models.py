@@ -91,6 +91,7 @@ def GeneratorCNN(x, normalgt, albedogt, output_num, z_num, repeat_num, hidden_nu
         x_n = slim.conv2d(x_n, 128, 3, 1, activation_fn=tf.nn.elu, data_format=data_format)
         # print x.get_shape() # 16 128 64 64
         normalout = slim.conv2d(x_n, 3, 1, 1, activation_fn=tf.nn.elu, data_format=data_format)
+        normalout = tf.clip_by_value(normalout,-1,1)
         # print x.get_shape() # 16 3 64 64
 
 
@@ -101,6 +102,7 @@ def GeneratorCNN(x, normalgt, albedogt, output_num, z_num, repeat_num, hidden_nu
         x_a = slim.conv2d(x_a, 128, 1, 1, activation_fn=tf.nn.elu, data_format=data_format)
         x_a = slim.conv2d(x_a, 128, 3, 1, activation_fn=tf.nn.elu, data_format=data_format)
         albedoout = slim.conv2d(x_a, 3, 1, 1, activation_fn=tf.nn.elu, data_format=data_format)
+        albedoout = tf.clip_by_value(albedoout,-1,1)
 
 
         # ## mask decoder
@@ -147,34 +149,127 @@ def GeneratorCNN(x, normalgt, albedogt, output_num, z_num, repeat_num, hidden_nu
 
         ## rendering loss
         # pointlight 12*3 = light# * [lx ly lz]
-        pointlight = tf.constant([
-        [-1, 0, 0],
-        [-1/np.sqrt(2.), 1/np.sqrt(2.), 0],
-        [0, 1, 0],
-        [1/np.sqrt(2.), 1/np.sqrt(2.), 0],
-        [1, 0, 0],
-        [-1/2., 1/np.sqrt(2.), 1/2.],
-        [1/2., 1/np.sqrt(2.), 1/2.],
-        [-1/np.sqrt(2.), 0, 1/np.sqrt(2.)],
-        [0, 0, 1],
-        [1/np.sqrt(2.), 0, 1/np.sqrt(2.)],
-        [-1/2., -1/np.sqrt(2.), 1/2.],
-        [1/2., -1/np.sqrt(2.), 1/2.]], dtype=tf.float32)
+        # pointlight = tf.constant([
+        # [-1, 0, 0],
+        # [-1/np.sqrt(2.), 1/np.sqrt(2.), 0],
+        # [0, 1, 0],
+        # [1/np.sqrt(2.), 1/np.sqrt(2.), 0],
+        # [1, 0, 0],
+        # [-1/2., 1/np.sqrt(2.), 1/2.],
+        # [1/2., 1/np.sqrt(2.), 1/2.],
+        # [-1/np.sqrt(2.), 0, 1/np.sqrt(2.)],
+        # [0, 0, 1],
+        # [1/np.sqrt(2.), 0, 1/np.sqrt(2.)],
+        # [-1/2., -1/np.sqrt(2.), 1/2.],
+        # [1/2., -1/np.sqrt(2.), 1/2.]], dtype=tf.float32)
+
+        # left right 0 +-30 +-60, up down 0 +-45
+        # pointlight = tf.constant([
+        # [np.sqrt(3./8.), np.sqrt(1./2.), np.sqrt(1./8.)],
+        # [np.sqrt(1./8.), np.sqrt(1./2.), np.sqrt(3./8.)],
+        # [0, np.sqrt(1./2.), np.sqrt(1./2.)],
+        # [-np.sqrt(1./8.), np.sqrt(1./2.), np.sqrt(3./8.)],
+        # [-np.sqrt(3./8.), np.sqrt(1./2.), np.sqrt(1./8.)],
+        # [np.sqrt(3./4.), 0, 1./2.],
+        # [1./2., 0, np.sqrt(3./4.)],
+        # [0, 0, 1],
+        # [-1./2., 0, np.sqrt(3./4.)],
+        # [-np.sqrt(3./4.), 0, 1./2.],
+        # [np.sqrt(3./8.), -np.sqrt(1./2.), np.sqrt(1./8.)],
+        # [np.sqrt(1./8.), -np.sqrt(1./2.), np.sqrt(3./8.)],
+        # [0, -np.sqrt(1./2.), np.sqrt(1./2.)],
+        # [-np.sqrt(1./8.), -np.sqrt(1./2.), np.sqrt(3./8.)],
+        # [-np.sqrt(3./8.), -np.sqrt(1./2.), np.sqrt(1./8.)]], dtype=tf.float32)
+
+        # degree = tf.constant([
+        # [30*np.pi/180.,45*np.pi/180.],
+        # [60*np.pi/180.,45*np.pi/180.],
+        # [90*np.pi/180.,45*np.pi/180.],
+        # [120*np.pi/180.,45*np.pi/180.],
+        # [150*np.pi/180.,45*np.pi/180.],
+        # [30*np.pi/180.,0*np.pi/180.],
+        # [60*np.pi/180.,0*np.pi/180.],
+        # [90*np.pi/180.,0*np.pi/180.],
+        # [120*np.pi/180.,0*np.pi/180.],
+        # [150*np.pi/180.,0*np.pi/180.],
+        # [30*np.pi/180.,-45*np.pi/180.],
+        # [60*np.pi/180.,-45*np.pi/180.],
+        # [90*np.pi/180.,-45*np.pi/180.],
+        # [120*np.pi/180.,-45*np.pi/180.],
+        # [150*np.pi/180.,-45*np.pi/180.]],dtype=tf.float32)
+
+
+        pi_on_180 = 0.017453292519943295
+
+        degree = tf.constant([
+        [30*pi_on_180,45*pi_on_180],
+        [60*pi_on_180,45*pi_on_180],
+        [90*pi_on_180,45*pi_on_180],
+        [120*pi_on_180,45*pi_on_180],
+        [150*pi_on_180,45*pi_on_180],
+        [30*pi_on_180,0*pi_on_180],
+        [60*pi_on_180,0*pi_on_180],
+        [90*pi_on_180,0*pi_on_180],
+        [120*pi_on_180,0*pi_on_180],
+        [150*pi_on_180,0*pi_on_180],
+        [30*pi_on_180,-45*pi_on_180],
+        [60*pi_on_180,-45*pi_on_180],
+        [90*pi_on_180,-45*pi_on_180],
+        [120*pi_on_180,-45*pi_on_180],
+        [150*pi_on_180,-45*pi_on_180]],dtype=tf.float32)
+
+        #
+        # pi_on_180 = 0.017453292519943295
+        #
+        # degree = tf.constant([
+        # [30*pi_on_180,0*pi_on_180],
+        # [60*pi_on_180,0*pi_on_180],
+        # [90*pi_on_180,0*pi_on_180],
+        # [120*pi_on_180,0*pi_on_180],
+        # [150*pi_on_180,0*pi_on_180]],dtype=tf.float32)
+
+
+
+        # degree = tf.constant([
+        # [30,45],
+        # [60,45],
+        # [90,45],
+        # [120,45],
+        # [150,45],
+        # [30,0],
+        # [60,0],
+        # [90,0],
+        # [120,0],
+        # [150,0],
+        # [30,-45],
+        # [60,-45],
+        # [90,-45],
+        # [120,-45],
+        # [150,-45]],dtype=tf.float32)
+
+
+
 
         # print (pointlight.get_shape()) # 12 3
 
         ## pointshading 16*64*64*12 = batch * x * y * light#
         # pointshading = getpointshading(normalout, pointlight) # 16 64 64 12
-        pointshading = getpointshading(normalgt, pointlight) # 16 64 64 12
+        # pointlight, pointshading = getpointshading(normalgt, degree) # 16 64 64 12
+        pointlight, pointshading = getpointshading(normalout, degree) # 16 64 64 12
+        # pointlight, pointshading, shadingmask = getpointshading(normalgt, degree) # 16 64 64 12
+        # pointlight, pointshading, shadingmask = getpointshading(normalout, degree) # 16 64 64 12
 
         ## pointrecon 192(12*16)*3*64*64
         # pointrecon = getpointrecon(albedoout, pointshading)
-        pointrecon = getpointrecon(albedogt, pointshading)
+        # pointrecon = getpointrecon(albedogt, pointshading)
+        pointrecon = getpointrecon(albedoout, pointshading)
+        # pointrecon = getpointrecon(albedogt, pointshading, shadingmask)
+        # pointrecon = getpointrecon(albedoout, pointshading, shadingmask)
 
 
         ## relighting
         newlight = tf.concat([lightout, shadingweight],1)
-        print (newlight.get_shape())
+        # print (newlight.get_shape()) #16 30
         newlight = tf.random_shuffle(newlight)
 
         newshading = getshading10(normalout, newlight[:,:27], newlight[:,27:])
@@ -193,7 +288,7 @@ def GeneratorCNN(x, normalgt, albedogt, output_num, z_num, repeat_num, hidden_nu
         # out = recon * maskout - maskout * bggt
 
     variables = tf.contrib.framework.get_variables(vs)
-    return albedoout, normalout, maskout, lightout, shadingweight, shading, recon, pointrecon, newlight, newshading, newrecon, variables
+    return albedoout, normalout, maskout, lightout, shadingweight, shading, recon, pointshading, pointrecon, newlight, newshading, newrecon, variables
     # return albedoout, normalout, maskout, lightout, shadingweight, shading, recon, light2, shading2, recon2, variables
     # return normalout, maskout, albedoout, lightout, shading, recon, relight, reshading, recon2, variables
     # return normalout, albedoout, lightout, shading, recon, variables
